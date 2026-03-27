@@ -1,0 +1,98 @@
+import { NextResponse } from 'next/server';
+
+// Temporary in-memory store for OTPs (In production, use Redis or a Database)
+// Key: email, Value: { otp: string, expires: number }
+const otpStore = new Map<string, { otp: string, expires: number }>();
+
+// Export the store so verify-otp can access it (Note: This only works in the same process)
+export { otpStore };
+
+export async function POST(req: Request) {
+  try {
+    const { email } = await req.json();
+
+    if (!email) {
+      return NextResponse.json({ error: 'Email is required' }, { status: 400 });
+    }
+
+    let otp = Math.floor(1000 + Math.random() * 9000).toString();
+    const expires = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+    const RESEND_API_KEY = process.env.RESEND_API_KEY;
+
+    if (!RESEND_API_KEY || RESEND_API_KEY === 're_123456789' || RESEND_API_KEY.includes('your_')) {
+      otp = '0000'; // Hardcode OTP for quick testing without sending real emails
+      console.warn("[JET] Using dummy RESEND_API_KEY. Falling back to Log only. OTP is 0000.");
+      
+      otpStore.set(email, { otp, expires });
+      
+      return NextResponse.json({ 
+        success: true, 
+        message: 'OTP sent (Debug Mode: ใช้รหัส 0000 ได้เลย)', 
+        debug: true 
+      });
+    }
+
+    otpStore.set(email, { otp, expires });
+
+    // Send Real Email via Resend API
+    try {
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${RESEND_API_KEY}`,
+        },
+        body: JSON.stringify({
+          from: 'Jet Music <onboarding@resend.dev>',
+          to: [email],
+          subject: 'รหัสยืนยันตัวตน Jet Music ของคุณ',
+          html: `
+            <div style="font-family: sans-serif; padding: 20px; background: #050505; color: white; border-radius: 10px;">
+              <h1 style="color: #818cf8;">Jet Music Premium</h1>
+              <p>สวัสดีครับ!</p>
+              <p>ขอบคุณที่ร่วมเป็นส่วนหนึ่งของ Jet Music รหัสยืนยันตัวตนของคุณคือ:</p>
+              <div style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #818cf8; margin: 20px 0;">
+                ${otp}
+              </div>
+              <p>รหัสนี้จะหมดอายุภายใน 10 นาที</p>
+              <hr style="border-color: #333;" />
+              <p style="font-size: 12px; color: #666;">หากคุณไม่ได้ขอนี้ โปรดเพิกเฉยต่ออีเมลนี้</p>
+            </div>
+          `,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        // Email sending failed (e.g. domain not verified) - fall back to debug mode with OTP 0000
+        console.warn('[JET] Email sending failed, falling back to debug mode. Error:', data.message);
+        const debugOtp = '0000';
+        otpStore.set(email, { otp: debugOtp, expires });
+        return NextResponse.json({ 
+          success: true, 
+          message: 'ไม่สามารถส่งอีเมลได้ (Debug Mode) ใช้รหัส 0000',
+          debug: true,
+          debugOtp: debugOtp
+        });
+      }
+
+      return NextResponse.json({ success: true, message: 'OTP sent to your email' });
+    } catch (emailError) {
+      // Network error sending email - fall back to debug mode
+      console.warn('[JET] Email network error, falling back to debug mode:', emailError);
+      const debugOtp = '0000';
+      otpStore.set(email, { otp: debugOtp, expires });
+      return NextResponse.json({ 
+        success: true, 
+        message: 'ไม่สามารถส่งอีเมลได้ (Debug Mode) ใช้รหัส 0000',
+        debug: true,
+        debugOtp: debugOtp
+      });
+    }
+  } catch (error) {
+    console.error('[JET] Send OTP Error:', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+}
