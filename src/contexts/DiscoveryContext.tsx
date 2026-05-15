@@ -17,6 +17,8 @@ const DiscoveryContext = createContext<DiscoveryContextType | undefined>(undefin
 
 const STORAGE_KEY_TRENDING = 'jet_music_trending_cache';
 const STORAGE_KEY_RECOMMENDED = 'jet_music_recommended_cache';
+const STORAGE_KEY_TRENDING_TS = 'jet_music_trending_ts';
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 export function DiscoveryProvider({ children }: { children: React.ReactNode }) {
   const [trending, setTrendingState] = useState<TrackData[]>([]);
@@ -25,17 +27,21 @@ export function DiscoveryProvider({ children }: { children: React.ReactNode }) {
   const [isRecommendedLoaded, setIsRecommendedLoaded] = useState(false);
   const isHydrated = useRef(false);
 
-  // 💾 PERSISTENCE: Hydrate from localStorage on mount 💾
+  // 💾 PERSISTENCE: Hydrate from localStorage on mount (with TTL check)
   useEffect(() => {
     if (isHydrated.current) return;
     
     const cachedTrending = localStorage.getItem(STORAGE_KEY_TRENDING);
+    const cachedTs = localStorage.getItem(STORAGE_KEY_TRENDING_TS);
     const cachedRecommended = localStorage.getItem(STORAGE_KEY_RECOMMENDED);
     
-    if (cachedTrending) {
+    // Only use cache if it's fresh (within TTL)
+    const isCacheFresh = cachedTs && (Date.now() - parseInt(cachedTs)) < CACHE_TTL_MS;
+
+    if (cachedTrending && isCacheFresh) {
       try {
         const parsed = JSON.parse(cachedTrending);
-        if (Array.isArray(parsed) && parsed.length >= 20) {
+        if (Array.isArray(parsed) && parsed.length >= 10) {
           setTrendingState(parsed);
           setIsTrendingLoaded(true);
         }
@@ -62,6 +68,7 @@ export function DiscoveryProvider({ children }: { children: React.ReactNode }) {
     setTrendingState(tracks);
     setIsTrendingLoaded(true);
     localStorage.setItem(STORAGE_KEY_TRENDING, JSON.stringify(tracks));
+    localStorage.setItem(STORAGE_KEY_TRENDING_TS, Date.now().toString());
   }, []);
 
   const setRecommended = useCallback((tracks: TrackData[]) => {
@@ -78,13 +85,23 @@ export function DiscoveryProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const queries = [
-        'เพลงไทย ยอดนิยมล่าสุด', 
-        'เพลงไทย มาแรง',
-        'Thailand Top 100 Hits',
-        'เพลงสตริงยอดฮิต 2025',
-        'Thai Trending Songs'
+      // Pool of queries — shuffled every refresh for variety
+      const queryPool = [
+        'เพลงไทยฮิต 2568',
+        'เพลงไทยล่าสุด 2025',
+        'Thailand Top Hits 2025',
+        'เพลงสตริงใหม่ 2568',
+        'Thai Pop 2025',
+        'เพลงมาแรง มีนาคม 2025',
+        'เพลงฮิตติดชาร์ต 2025',
+        'เพลงไทยยอดนิยม ล่าสุด',
+        'Thai R&B 2025',
+        'เพลงใหม่ 2568 มาแรง',
       ];
+      
+      // Shuffle and pick 4
+      const shuffled = [...queryPool].sort(() => Math.random() - 0.5);
+      const queries = shuffled.slice(0, 4);
       
       const allTracks: TrackData[] = [];
       const seenIds = new Set();
@@ -114,6 +131,7 @@ export function DiscoveryProvider({ children }: { children: React.ReactNode }) {
          setTrendingState(finalTrending);
          setIsTrendingLoaded(true);
          localStorage.setItem(STORAGE_KEY_TRENDING, JSON.stringify(finalTrending));
+         localStorage.setItem(STORAGE_KEY_TRENDING_TS, Date.now().toString());
       }
       
       console.log(`Discovery: Populated ${finalTrending.length} trending tracks.`);

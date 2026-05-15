@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   if (!email) return NextResponse.json({ error: 'Email required' }, { status: 400 });
 
   try {
-    const data = await redis.get(`jet_v2_data_${email}`);
+    const data = await redis.get(`jet_v2_user_${email}`);
     return NextResponse.json({ data: typeof data === 'string' ? JSON.parse(data) : data });
   } catch (error) {
     console.error("Redis GET Error:", error);
@@ -26,7 +26,18 @@ export async function POST(request: Request) {
     const { email, data } = await request.json();
     if (!email || !data) return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
 
-    await redis.set(`jet_v2_data_${email}`, data);
+    const existingData = await redis.get(`jet_v2_user_${email}`);
+    const existing = typeof existingData === 'string' ? JSON.parse(existingData) : existingData;
+
+    // Merge data but preserve password and sensitive fields if they aren't in incoming data
+    const updatedUser = {
+      ...(existing || {}),
+      ...data,
+      password: existing?.password || data.password, // Preserve password
+      email: email // Ensure email is consistent
+    };
+
+    await redis.set(`jet_v2_user_${email}`, JSON.stringify(updatedUser));
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Redis POST Error:", error);

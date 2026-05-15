@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
-import { otpStore } from '../send-otp/route';
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL || '',
+  token: process.env.KV_REST_API_TOKEN || '',
+});
 
 export async function POST(req: Request) {
   try {
@@ -9,31 +14,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Email and OTP are required' }, { status: 400 });
     }
 
-    const storedData = otpStore.get(email);
+    const key = `jet_otp_${email.toLowerCase()}`;
+    const storedOtp = await redis.get<string>(key);
 
-    if (!storedData) {
-      return NextResponse.json({ error: 'ไม่พบรหัสยืนยัน หรือรหัสหมดอายุแล้ว' }, { status: 400 });
+    if (!storedOtp) {
+      return NextResponse.json(
+        { error: 'ไม่พบรหัสยืนยัน หรือรหัสหมดอายุแล้ว' },
+        { status: 400 }
+      );
     }
 
-    if (Date.now() > storedData.expires) {
-      otpStore.delete(email);
-      return NextResponse.json({ error: 'รหัสยืนยันหมดอายุแล้ว กรุณาขอรหัสใหม่' }, { status: 400 });
-    }
-
-    if (storedData.otp !== otp) {
+    if (storedOtp !== otp) {
       return NextResponse.json({ error: 'รหัสยืนยันไม่ถูกต้อง' }, { status: 400 });
     }
 
-    // Success! Clear the OTP
-    otpStore.delete(email);
+    // Success — delete OTP so it can't be reused
+    await redis.del(key);
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       user: {
         email,
         verified: true,
-        // In a real app, you'd fetch user data from DB here
-      }
+      },
     });
   } catch (error) {
     console.error('[JET] Verify OTP Error:', error);

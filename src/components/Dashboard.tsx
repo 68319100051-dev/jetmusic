@@ -6,7 +6,7 @@ import { LogOut, Calendar, Award, Music, ShieldCheck } from 'lucide-react';
 import styles from './Dashboard.module.css';
 
 export default function Dashboard() {
-  const { user, logout, updateUser } = useAuth();
+  const { user, logout, updateProfile } = useAuth();
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -24,19 +24,40 @@ export default function Dashboard() {
     const reader = new FileReader();
     reader.onload = (event) => {
       const base64Str = event.target?.result as string;
-      updateUser({ avatarUrl: base64Str });
+      updateProfile({ avatarUrl: base64Str });
       showToast('อัปเดตรูปโพรไฟล์สำเร็จ ✨', 'success');
     };
     reader.readAsDataURL(file);
   };
 
 
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return 'ไม่ระบุ';
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('th-TH', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
+  const defaultAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.username)}&background=818cf8&color=fff&size=128`;
+
   return (
     <div className={styles.container}>
       <header className={styles.header}>
         <div className={styles.profileHeader}>
           <div className={styles.avatarWrapper} onClick={() => fileInputRef.current?.click()} style={{ cursor: 'pointer' }}>
-            <img src={user.avatarUrl} alt={user.username} className={styles.avatar} />
+            <img 
+              src={user.avatarUrl || defaultAvatar} 
+              alt={user.username} 
+              className={styles.avatar} 
+              onError={(e) => { (e.target as HTMLImageElement).src = defaultAvatar; }}
+            />
             <div className={styles.avatarEditOverlay}>
               <span style={{ fontSize: '0.8rem', color: 'white', fontWeight: 'bold' }}>เปลี่ยนรูป</span>
             </div>
@@ -55,7 +76,7 @@ export default function Dashboard() {
             <h1 className={styles.username}>{user.username}</h1>
             <p className={styles.email}>{user.email}</p>
             <div className={styles.tierTag}>
-              <Award size={14} /> {user.tier}
+              <Award size={14} /> {user.tier || 'Premium'}
             </div>
           </div>
         </div>
@@ -69,7 +90,7 @@ export default function Dashboard() {
         </div>
         <div className={styles.statCard}>
           <Calendar className={styles.statIcon} size={24} />
-          <div className={styles.statValue}>{user.memberSince}</div>
+          <div className={styles.statValue}>{formatDate(user.memberSince || (user as any).createdAt)}</div>
           <div className={styles.statLabel}>เป็นสมาชิกตั้งแต่</div>
         </div>
       </div>

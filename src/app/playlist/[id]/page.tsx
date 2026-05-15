@@ -153,9 +153,9 @@ export default function PlaylistPage() {
                    <button 
                     className={styles.heartSmallBtn}
                     onClick={(e) => { e.stopPropagation(); toggleLike(track); showToast(isLiked(track.id) ? 'ลบออกจากเพลงที่ชอบ' : 'เพิ่มในเพลงที่ชอบ', 'success'); }}
-                    style={{ color: liked ? '#ef4444' : 'rgba(255,255,255,0.2)', background: 'none', border: 'none', cursor: 'pointer', padding: 8 }}
+                    style={{ color: liked ? '#ff4d4d' : 'rgba(255,255,255,0.2)', background: 'none', border: 'none', cursor: 'pointer', padding: 8 }}
                   >
-                    <Heart size={18} fill={liked ? '#ef4444' : 'none'} />
+                    <Heart size={18} fill={liked ? '#ff4d4d' : 'none'} stroke={liked ? '#ff4d4d' : 'currentColor'} />
                   </button>
                   <button 
                     className={styles.removeBtn}

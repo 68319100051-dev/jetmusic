@@ -1,25 +1,28 @@
 'use client';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePlayer } from '@/contexts/PlayerContext';
 import LandingPage from '@/components/LandingPage';
 import RecentlyPlayed from '@/components/RecentlyPlayed';
 import { useDiscovery } from '@/contexts/DiscoveryContext';
 import { SkeletonCard } from '@/components/Skeleton';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { ReactNode } from 'react';
 
-function Section({ title, children, href }: { title: string; children: ReactNode; href?: string }) {
+function Section({ title, children, href, action }: { title: string; children: ReactNode; href?: string; action?: ReactNode }) {
   return (
     <section className="section page-container">
       <div className="section-header">
         <h2 className="section-title">{title}</h2>
-        {href && (
-          <Link href={href} className="see-all">
-            ดูทั้งหมด <ChevronRight size={14} />
-          </Link>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {action}
+          {href && (
+            <Link href={href} className="see-all">
+              ดูทั้งหมด <ChevronRight size={14} />
+            </Link>
+          )}
+        </div>
       </div>
       {children}
     </section>
@@ -53,12 +56,25 @@ export default function Home() {
   const { user, isGuest, isLoaded, setShowAuthModal } = useAuth();
   const { trending, recommended, isTrendingLoaded, isRecommendedLoaded, refreshTrending } = useDiscovery();
 
-  // Load trending if empty
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Auto-load if cache is empty
   useEffect(() => {
     if (isLoaded && (user || isGuest) && trending.length === 0) {
       refreshTrending();
     }
   }, [isLoaded, user, isGuest, trending.length, refreshTrending]);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    // Clear old cache timestamp to force fresh fetch
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('jet_music_trending_ts');
+      localStorage.removeItem('jet_music_trending_cache');
+    }
+    await refreshTrending();
+    setIsRefreshing(false);
+  };
 
   if (!isLoaded) return null;
 
@@ -84,7 +100,20 @@ export default function Home() {
       <main>
         {user && <RecentlyPlayed />}
 
-        <Section title="กำลังมาแรงตอนนี้" href="/category/trending">
+        <Section 
+          title="กำลังมาแรงตอนนี้" 
+          href="/category/trending"
+          action={
+            <button 
+              onClick={handleRefresh} 
+              disabled={isRefreshing}
+              style={{ background: 'none', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 20, color: 'rgba(255,255,255,0.6)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', padding: '3px 10px', whiteSpace: 'nowrap' }}
+            >
+              <RefreshCw size={12} style={{ animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
+              {isRefreshing ? 'โหลด...' : 'รีเฟรช'}
+            </button>
+          }
+        >
           <div className="horizontal-scroll">
             {!isTrendingLoaded ? (
                [...Array(6)].map((_, i) => <SkeletonCard key={i} />)

@@ -1,14 +1,10 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { Search as SearchIcon, Loader2, Play, Heart, Plus, Music, X, History, Trash2 } from 'lucide-react';
-import TrackCard from '@/components/TrackCard';
+import { Search as SearchIcon, Loader2, X } from 'lucide-react';
 import TrackRow from '@/components/TrackRow';
-import { usePlayer } from '@/contexts/PlayerContext';
-import { usePlaylist } from '@/contexts/PlaylistContext';
 import { useToast } from '@/contexts/ToastContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDiscovery } from '@/contexts/DiscoveryContext';
-import { SkeletonCard } from '@/components/Skeleton';
 import { useSearchParams, useRouter } from 'next/navigation';
 import styles from './page.module.css';
 
@@ -19,13 +15,11 @@ function SearchContent() {
   
   const [localQuery, setLocalQuery] = useState(query);
 
-  const { playTrack } = usePlayer();
-  const { user, isLoaded, addToHistory, syncUserData } = useAuth();
+  const { user, syncUserData } = useAuth();
   const { showToast } = useToast();
   const { trending, refreshTrending, isTrendingLoaded } = useDiscovery();
   
   const searchHistory = user?.searchHistory || [];
-  const listeningHistory = user?.history || [];
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -129,15 +123,14 @@ function SearchContent() {
           <div className={styles.listArea}>
             <h2 className={styles.sectionHeading}>ผลการค้นหาที่ดีที่สุด</h2>
           {results.map((track, index) => (
-            <div key={track.id} onClick={() => addToHistory(track)}>
-              <TrackRow 
-                track={track} 
-                index={index}
-                showIndex={false}
-                queue={results}
-                playSource="search"
-              />
-            </div>
+            <TrackRow 
+              key={track.id}
+              track={track} 
+              index={index}
+              showIndex={false}
+              queue={results}
+              playSource="search"
+            />
           ))}
           </div>
         ) : query ? (
@@ -166,22 +159,6 @@ function SearchContent() {
               </div>
             )}
 
-            {/* 🎧 LISTENING HISTORY 🎧 */}
-            {listeningHistory.length > 0 && (
-              <div className={styles.historySection}>
-                <h2 className={styles.sectionTitle}>ฟังล่าสุด</h2>
-                <div className={styles.historyList}>
-                  {listeningHistory.slice(0, 5).map((track) => (
-                    <div key={track.id} className={styles.historyRow}>
-                        <div className={styles.historyInfo} onClick={() => playTrack(track, listeningHistory, 'history')}>
-                            <History size={16} className={styles.historyIcon} />
-                            <span className={styles.historyTitle}>{track.title}</span>
-                        </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* 🔥 TRENDING 🔥 */}
             <div className={styles.trendingSection}>

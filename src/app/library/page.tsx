@@ -23,7 +23,6 @@ export default function LibraryPage() {
       confirmLabel: 'สร้างเลย',
       cancelLabel: 'ยกเลิก'
     });
-    
     if (name && name.trim()) {
       createPlaylist(name.trim());
       showToast(`สร้างเพลย์ลิสต์ "${name}" แล้ว`, 'success');
@@ -37,7 +36,7 @@ export default function LibraryPage() {
           <Music size={64} color="var(--text-secondary)" opacity={0.2} style={{ marginBottom: 20 }} />
           <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'white' }}>เข้าสู่ระบบเพื่อดูคลังเพลง</h2>
           <p style={{ marginTop: 8 }}>เพลย์ลิสต์และเพลงที่คุณชอบจะปรากฏที่นี่</p>
-          <button 
+          <button
             onClick={() => setShowAuthModal(true)}
             className={styles.browseBtn}
             style={{ marginTop: 24, border: 'none' }}
@@ -55,36 +54,46 @@ export default function LibraryPage() {
         <h1 className="logo-gradient" style={{ fontSize: '1.8rem', margin: 0 }}>คลังเพลงของคุณ</h1>
       </header>
 
-      <div style={{ paddingBottom: 40 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-           <h2 className={styles.sectionTitle} style={{ margin: 0, fontSize: '1.4rem' }}>เพลย์ลิสต์</h2>
-           <button 
-             onClick={handleCreatePlaylist}
-             style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, cursor: 'pointer' }}
-           >
-             <PlusCircle size={20} /> สร้างใหม่
-           </button>
+      <div style={{ paddingBottom: 120 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <h2 className={styles.sectionTitle} style={{ margin: 0, fontSize: '1.4rem' }}>เพลย์ลิสต์</h2>
+          <button
+            onClick={handleCreatePlaylist}
+            style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, cursor: 'pointer' }}
+          >
+            <PlusCircle size={20} /> สร้างใหม่
+          </button>
         </div>
 
         {playlists.length > 0 ? (
-          <div className={styles.playlistGrid}>
+          <div className={styles.playlistList}>
             {playlists.map((pl: Playlist) => {
               const isLikedSongs = pl.id === 'liked_songs_id';
               return (
-                <Link 
-                  href={`/playlist/${pl.id}`} 
-                  key={pl.id} 
-                  className={`${styles.playlistCard} ${isLikedSongs ? styles.likedCard : ''}`}
-                >
-                  <div className={`${styles.coverWrapper} ${isLikedSongs ? styles.likedCover : ''}`}>
+                <Link href={`/playlist/${pl.id}`} key={pl.id} className={styles.playlistItem}>
+                  {/* Cover thumbnail */}
+                  <div className={`${styles.coverThumb} ${isLikedSongs ? styles.likedCoverThumb : ''}`}>
                     {isLikedSongs ? (
-                       <Heart size={48} color="white" fill="white" />
+                      <Heart size={30} color="white" fill="white" />
+                    ) : pl.tracks[0]?.coverUrl ? (
+                      <img src={pl.tracks[0].coverUrl} alt={pl.name} className={styles.coverImg} />
                     ) : (
-                      <ListVideo size={40} color="rgba(255,255,255,0.2)" />
+                      <ListVideo size={26} color="rgba(255,255,255,0.25)" />
                     )}
                   </div>
-                  <div className={styles.playlistName}>{pl.name}</div>
-                  <div className={styles.playlistMeta}>{pl.tracks.length} เพลง</div>
+
+                  {/* Text info */}
+                  <div className={styles.itemInfo}>
+                    <div className={`${styles.itemTitle} ${isLikedSongs ? styles.likedTitle : ''}`}>
+                      {pl.name}
+                    </div>
+                    <div className={styles.itemMeta}>
+                      {isLikedSongs
+                        ? <>📌 เพลย์ลิสต์ • {pl.tracks.length} เพลง</>
+                        : <>เพลย์ลิสต์ • {user.username}</>
+                      }
+                    </div>
+                  </div>
                 </Link>
               );
             })}

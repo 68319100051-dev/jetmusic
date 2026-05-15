@@ -2,7 +2,7 @@
 import { useRef, useEffect, useState } from 'react';
 import {
   Play, Pause, SkipForward, SkipBack, ChevronDown, Heart,
-  ListMusic, Loader2, X, Plus, Shuffle, Repeat, Repeat1
+  ListMusic, Loader2, X, Plus, Shuffle, Repeat, Repeat1, Volume2
 } from 'lucide-react';
 import { usePlayer } from '../contexts/PlayerContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -17,7 +17,7 @@ export default function Player() {
   const {
     currentTrack, isPlaying, pauseTrack, resumeTrack,
     playNext, playPrevious, toggleShuffle, toggleRepeat,
-    shuffle, repeatMode, onTrackEnded
+    shuffle, repeatMode, onTrackEnded, queue, currentIndex
   } = usePlayer();
   const { showToast } = useToast();
   
@@ -25,6 +25,16 @@ export default function Player() {
   const [isMinimized, setIsMinimized] = useState(false);
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
+  const [showVolumeSlider, setShowVolumeSlider] = useState(false);
+  
+  // Audio Booster State
+  const [volumeBoost, setVolumeBoost] = useState(() => {
+    if (typeof window !== 'undefined') {
+       const saved = localStorage.getItem('jet_v2_volume_boost');
+       return saved ? parseFloat(saved) : 1.0;
+    }
+    return 1.0;
+  });
   
   const [playedSeconds, setPlayedSeconds] = useState(0);
   const [playedPercent, setPlayedPercent] = useState(0);
@@ -34,9 +44,28 @@ export default function Player() {
   
   const { user } = useAuth();
   const { playlists, createPlaylist, addTrack, toggleLike, isLiked } = usePlaylist();
+  
+  const [isHeartPopping, setIsHeartPopping] = useState(false);
+
+  const handleToggleLike = () => {
+    if (!user) { showToast('กรุณาเข้าสู่ระบบก่อนครับ', 'error'); return; }
+    const currentlyLiked = isLiked(currentTrack!.id);
+    toggleLike(currentTrack!);
+    setIsHeartPopping(true);
+    setTimeout(() => setIsHeartPopping(false), 400);
+    showToast(currentlyLiked ? 'ลบออกจากเพลงที่ชอบ' : 'เพิ่มในเพลงที่ชอบ', 'success');
+  };
+
   const playerRef = useRef<any>(null);
   const isFirstLoad = useRef(true);
   const silentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const wakeLockRef = useRef<any>(null);
+
+  // Booster Refs
+  const audioCtxRef = useRef<any>(null);
+  const gainNodeRef = useRef<any>(null);
+  const sourceNodeRef = useRef<any>(null);
+  const attachedElementRef = useRef<HTMLMediaElement | null>(null);
 
   // Silent track to keep PWA alive in background
   const SILENT_TRACK = "data:audio/wav;base64,UklGRigAAABXQVZFRm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==";
@@ -45,7 +74,6 @@ export default function Player() {
     if (currentTrack) {
       if (isFirstLoad.current) {
         isFirstLoad.current = false;
-        // Don't expand on app start (restoration focus)
         return;
       }
       setIsExpanded(true);
@@ -56,6 +84,54 @@ export default function Player() {
     }
   }, [currentTrack?.id]);
 
+  // Apply Volume Boost via Web Audio API
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('jet_v2_volume_boost', volumeBoost.toString());
+    }
+    
+    const applyAudioBoost = () => {
+      if (volumeBoost <= 1.0 && !gainNodeRef.current) return;
+      
+      const player = playerRef.current?.getInternalPlayer();
+      if (!player || !(player instanceof HTMLMediaElement)) return;
+      
+      if (!player.crossOrigin && !player.src.startsWith('blob:')) {
+         player.crossOrigin = 'anonymous';
+      }
+
+      try {
+        if (!audioCtxRef.current) {
+          const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+          if (!Ctx) return;
+          audioCtxRef.current = new Ctx();
+        }
+        
+        if (audioCtxRef.current.state === 'suspended') {
+           audioCtxRef.current.resume();
+        }
+
+        if (attachedElementRef.current !== player) {
+          if (gainNodeRef.current) gainNodeRef.current.disconnect();
+          sourceNodeRef.current = audioCtxRef.current.createMediaElementSource(player);
+          gainNodeRef.current = audioCtxRef.current.createGain();
+          sourceNodeRef.current.connect(gainNodeRef.current);
+          gainNodeRef.current.connect(audioCtxRef.current.destination);
+          attachedElementRef.current = player;
+        }
+        
+        if (gainNodeRef.current) {
+          gainNodeRef.current.gain.value = volumeBoost;
+        }
+      } catch (e) {
+         console.warn("Audio boost blocked by browser or CORS policy", e);
+      }
+    };
+    
+    applyAudioBoost();
+  }, [volumeBoost, currentTrack, isPlaying]);
+
+  // MediaSession API
   useEffect(() => {
     if (currentTrack && 'mediaSession' in navigator) {
       try {
@@ -69,16 +145,13 @@ export default function Player() {
             : []
         });
 
-        // Sync Playback State
         navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
 
-        // Action Handlers
         navigator.mediaSession.setActionHandler('play', () => resumeTrack());
         navigator.mediaSession.setActionHandler('pause', () => pauseTrack());
         navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
         navigator.mediaSession.setActionHandler('previoustrack', () => playPrevious());
         
-        // Seek Support
         navigator.mediaSession.setActionHandler('seekto', (details) => {
           if (details.seekTime !== undefined && playerRef.current) {
             playerRef.current.seekTo(details.seekTime);
@@ -101,6 +174,19 @@ export default function Player() {
     }
   }, [currentTrack?.id, isPlaying, resumeTrack, pauseTrack, playNext, playPrevious, playedSeconds, duration]);
 
+  // Update MediaSession position state
+  useEffect(() => {
+    if ('mediaSession' in navigator && duration > 0) {
+      try {
+        navigator.mediaSession.setPositionState({
+          duration,
+          playbackRate: 1,
+          position: playedSeconds
+        });
+      } catch (e) {}
+    }
+  }, [playedSeconds, duration]);
+
   const openPlayer = () => {
     setIsExpanded(true);
     window.history.pushState({ playerOpen: true }, '');
@@ -110,7 +196,7 @@ export default function Player() {
     if (e) e.stopPropagation();
     setIsExpanded(false);
     if (window.history.state?.playerOpen) {
-      window.history.back(); // triggers popstate or exits
+      window.history.back();
     }
   };
 
@@ -135,52 +221,50 @@ export default function Player() {
     if (total && total > 0) setDuration(total);
   };
 
-  // Background Playback Fix: Sync silent audio with main player
+  // Silent Audio: keep audio session alive in background
   useEffect(() => {
-    let interval: any;
-    if (isPlaying && silentAudioRef.current) {
-      silentAudioRef.current.play().catch(() => {});
-      // Aggressive heartbeat to keep process alive
-      interval = setInterval(() => {
-        if (silentAudioRef.current && isPlaying) {
-          if (silentAudioRef.current.paused) silentAudioRef.current.play().catch(() => {});
-        }
-      }, 2000);
-    } else if (silentAudioRef.current) {
-      silentAudioRef.current.pause();
+    const silent = silentAudioRef.current;
+    if (!silent) return;
+    if (isPlaying) {
+      silent.play().catch(() => {});
+    } else {
+      silent.pause();
     }
-    return () => clearInterval(interval);
   }, [isPlaying]);
 
-  // Wake Lock API to prevent system sleep while playing
+  // Wake Lock: prevent screen from sleeping while playing
   useEffect(() => {
-    let wakeLock: any = null;
     const requestWakeLock = async () => {
       try {
-        if ('wakeLock' in navigator && isPlaying) {
-          wakeLock = await (navigator as any).wakeLock.request('screen');
+        if ('wakeLock' in navigator) {
+          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
         }
       } catch (err) {}
     };
-
     if (isPlaying) requestWakeLock();
-    return () => {
-      if (wakeLock) {
-        wakeLock.release().then(() => { wakeLock = null; });
-      }
-    };
+    else if (wakeLockRef.current) {
+      wakeLockRef.current.release().catch(() => {});
+      wakeLockRef.current = null;
+    }
   }, [isPlaying]);
 
-  // Handle Visibility Change (Resume if browser pauses it)
+  // Re-acquire wake lock + resume audio on tab/app return
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        if (isPlaying) {
-          if (playerRef.current && typeof playerRef.current.getInternalPlayer === 'function') {
-             const ip = playerRef.current.getInternalPlayer();
-             if (ip && ip.playVideo) ip.playVideo();
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && isPlaying) {
+        if ('wakeLock' in navigator && !wakeLockRef.current) {
+          try { wakeLockRef.current = await (navigator as any).wakeLock.request('screen'); } catch (e) {}
+        }
+        // Resume main player if paused by OS
+        if (playerRef.current) {
+          const ip = playerRef.current.getInternalPlayer?.();
+          if (ip) {
+            if (typeof ip.play === 'function') ip.play().catch(() => {});
+            else if (typeof ip.playVideo === 'function') ip.playVideo();
           }
         }
+        // Also resume silent track
+        if (silentAudioRef.current?.paused) silentAudioRef.current.play().catch(() => {});
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -193,7 +277,7 @@ export default function Player() {
     setPlayedSeconds(duration * val);
   };
 
-  const handleSeekMouseUp = (e: React.MouseEvent<HTMLInputElement>) => {
+  const handleSeekMouseUp = (e: React.MouseEvent<HTMLInputElement> | React.TouchEvent<HTMLInputElement>) => {
     setSeeking(false);
     if (playerRef.current && typeof playerRef.current.seekTo === 'function') {
       playerRef.current.seekTo(parseFloat((e.target as HTMLInputElement).value));
@@ -247,9 +331,22 @@ export default function Player() {
     ? `/api/stream?id=${encodeURIComponent(currentTrack.id)}` 
     : (currentTrack.audioSrc || '');
 
+  // Preload next track
+  let nextTrack = null;
+  if (!shuffle && queue.length > 1) {
+    let nextIdx = currentIndex + 1;
+    if (nextIdx >= queue.length && repeatMode === 'all') nextIdx = 0;
+    if (nextIdx < queue.length) nextTrack = queue[nextIdx];
+  }
+  const nextAudioSrc = nextTrack 
+    ? (nextTrack.id.includes('youtube') || nextTrack.id.includes('youtu.be')
+        ? `/api/stream?id=${encodeURIComponent(nextTrack.id)}`
+        : nextTrack.audioSrc)
+    : '';
+
   return (
     <>
-      {/* Silent Background Audio Element */}
+      {/* Silent audio to keep PWA audio session alive */}
       <audio 
         ref={silentAudioRef} 
         src={SILENT_TRACK} 
@@ -258,6 +355,12 @@ export default function Player() {
         style={{ display: 'none' }} 
       />
 
+      {/* Preload next track */}
+      {nextAudioSrc && (
+        <audio preload="auto" src={nextAudioSrc} style={{ display: 'none' }} />
+      )}
+
+      {/* Main ReactPlayer */}
       <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', pointerEvents: 'none' }}>
         <ReactPlayer
           ref={playerRef}
@@ -270,16 +373,18 @@ export default function Player() {
           onBuffer={() => setIsReady(false)}
           onBufferEnd={() => setIsReady(true)}
           onEnded={() => onTrackEnded()}
-          onError={(e: any) => console.log("[JET] Player silent error:", e)}
-            config={{
-              file: {
-                forceAudio: true,
-                attributes: {
-                  controlsList: 'nodownload',
-                  preload: 'auto'
-                }
+          onError={(e: any) => console.log("[JET] Player error:", e)}
+          config={{
+            file: {
+              forceAudio: true,
+              attributes: {
+                playsInline: true,
+                controlsList: 'nodownload',
+                preload: 'auto',
+                crossOrigin: 'anonymous'
               }
-            }}
+            }
+          }}
         />
       </div>
 
@@ -290,11 +395,40 @@ export default function Player() {
               <ChevronDown size={32} />
             </button>
             <span className={styles.playingLabel}>JET STREAM • {isReady ? 'คุณภาพสูง' : 'กำลังบุฟเฟอร์...'}</span>
-            <button className={styles.controlButton}>
-              <ListMusic size={24} />
-            </button>
-          </div>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button className={styles.controlButton} onClick={() => setShowVolumeSlider(!showVolumeSlider)}>
+                <Volume2 size={24} color={volumeBoost > 1.0 ? '#ff4d4d' : 'white'} />
+              </button>
+              
+              {showVolumeSlider && (
+                <div className={styles.volumePopover}>
+                  <div className={styles.volumePopoverHeader}>
+                    <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.7)', fontWeight: 'bold' }}>บูสเสียง</span>
+                    <button className={styles.volumePopoverClose} onClick={() => setShowVolumeSlider(false)}>
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <input
+                    type="range"
+                    min="1" max="3" step="0.1"
+                    value={volumeBoost}
+                    onChange={(e) => setVolumeBoost(parseFloat(e.target.value))}
+                    className={`${styles.volumeScrubber} ${volumeBoost > 1.0 ? styles.boosted : ''}`}
+                    style={{ margin: '14px 0' }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>
+                    <span>1.0x</span>
+                    <span style={{ color: volumeBoost > 1.0 ? '#ff4d4d' : 'white', fontWeight: 'bold', fontSize: '0.85rem' }}>{volumeBoost.toFixed(1)}x</span>
+                    <span>3.0x</span>
+                  </div>
+                </div>
+              )}
 
+              <button className={styles.controlButton}>
+                <ListMusic size={24} />
+              </button>
+            </div>
+          </div>
           <div className={styles.fullScreenCoverWrapper}>
             {!isReady && <div className={styles.loaderOverlay}><Loader2 size={64} className={styles.spin} /></div>}
             <img src={currentTrack.coverUrl} alt={currentTrack.title} className={`${styles.fullScreenCover} ${!isReady ? styles.dimmed : ''}`} />
@@ -308,15 +442,12 @@ export default function Player() {
               </div>
               <div style={{ display: 'flex', gap: 12 }}>
                 <button
-                  className={styles.heartBtn}
-                  onClick={() => {
-                    if (!user) { showToast('กรุณาเข้าสู่ระบบก่อนครับ', 'error'); return; }
-                    toggleLike(currentTrack);
-                    showToast(isLiked(currentTrack.id) ? 'ลบออกจากเพลงที่ชอบ' : 'เพิ่มในเพลงที่ชอบ', 'success');
-                  }}
-                  style={{ color: liked ? '#ef4444' : 'rgba(255,255,255,0.6)' }}
+                  key={isHeartPopping ? `pop-${currentTrack.id}` : `idle-${currentTrack.id}`}
+                  className={`${styles.heartBtn} ${isHeartPopping ? styles.heartPop : ''}`}
+                  onClick={handleToggleLike}
+                  style={{ color: liked ? '#ff4d4d' : 'rgba(255,255,255,0.6)' }}
                 >
-                  <Heart size={28} fill={liked ? '#ef4444' : 'none'} />
+                  <Heart size={28} fill={liked ? '#ff4d4d' : 'none'} stroke={liked ? '#ff4d4d' : 'currentColor'} />
                 </button>
                 <button
                   className={styles.secondaryControl}
@@ -338,7 +469,7 @@ export default function Player() {
               value={playedPercent}
               onMouseDown={() => setSeeking(true)}
               onChange={handleSeekChange}
-              onMouseUp={handleSeekMouseUp}
+              onMouseUp={handleSeekMouseUp as any}
               onTouchStart={() => setSeeking(true)}
               onTouchEnd={handleSeekMouseUp as any}
               className={styles.scrubber}
@@ -349,17 +480,15 @@ export default function Player() {
             </div>
           </div>
 
-          {/* ✨ PREMIUM CONTROLS ROW ✨ */}
           <div className={styles.fullScreenControls}>
             <button
               className={`${styles.secondaryControl} ${shuffle ? styles.active : ''}`}
               onClick={toggleShuffle}
-              title="สุ่มเพลง"
             >
               <Shuffle size={22} />
             </button>
 
-            <button onClick={() => playPrevious()} className={styles.secondaryControl} title="เพลงก่อนหน้า">
+            <button onClick={() => playPrevious()} className={styles.secondaryControl}>
               <SkipBack size={32} fill="currentColor" />
             </button>
 
@@ -367,14 +496,13 @@ export default function Player() {
               {isPlaying ? <Pause size={38} fill="currentColor" /> : <Play size={38} fill="currentColor" style={{ marginLeft: 4 }} />}
             </button>
 
-            <button onClick={() => playNext()} className={styles.secondaryControl} title="เพลงถัดไป">
+            <button onClick={() => playNext()} className={styles.secondaryControl}>
               <SkipForward size={32} fill="currentColor" />
             </button>
 
             <button
               className={`${styles.secondaryControl} ${repeatMode !== 'off' ? styles.active : ''}`}
               onClick={toggleRepeat}
-              title={repeatMode === 'off' ? 'เล่นทั้งหมด' : repeatMode === 'all' ? 'เล่นซ้ำเพลงนี้' : 'ปิดซ้ำ'}
             >
               {repeatIcon}
             </button>
@@ -395,16 +523,24 @@ export default function Player() {
               <div className={styles.miniTitle}>{currentTrack.title}</div>
               <div className={styles.miniArtist}>{currentTrack.artist}</div>
             </div>
+            <button
+              key={isHeartPopping ? `pop-mini-${currentTrack.id}` : `idle-mini-${currentTrack.id}`}
+              className={`${styles.miniHeartBtn} ${isHeartPopping ? styles.heartPop : ''} ${liked ? styles.liked : ''}`}
+              onClick={(e) => { e.stopPropagation(); handleToggleLike(); }}
+              style={{ color: liked ? '#ff4d4d' : 'rgba(255,255,255,0.4)', marginLeft: 'auto', marginRight: 10, background: 'none', border: 'none', cursor: 'pointer', padding: 8 }}
+            >
+              <Heart size={20} fill={liked ? '#ff4d4d' : 'none'} stroke={liked ? '#ff4d4d' : 'currentColor'} />
+            </button>
           </div>
           <div className={styles.miniControls}>
             {!isReady && <Loader2 size={24} className={styles.spin} style={{ marginRight: 10 }} />}
-            <button onClick={(e) => { e.stopPropagation(); playPrevious(); }} className={styles.miniBtn} title="ก่อนหน้า">
+            <button onClick={(e) => { e.stopPropagation(); playPrevious(); }} className={styles.miniBtn}>
               <SkipBack size={22} fill="currentColor" />
             </button>
             <button onClick={togglePlay} className={styles.miniBtn}>
               {isPlaying ? <Pause size={28} fill="white" /> : <Play size={28} fill="white" style={{ marginLeft: 2 }} />}
             </button>
-            <button onClick={(e) => { e.stopPropagation(); playNext(); }} className={styles.miniBtn} title="ถัดไป">
+            <button onClick={(e) => { e.stopPropagation(); playNext(); }} className={styles.miniBtn}>
               <SkipForward size={22} fill="currentColor" />
             </button>
             <button

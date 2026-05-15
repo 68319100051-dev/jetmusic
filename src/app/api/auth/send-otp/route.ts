@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
+import { Redis } from '@upstash/redis';
 
-// Temporary in-memory store for OTPs (In production, use Redis or a Database)
-// Key: email, Value: { otp: string, expires: number }
-const otpStore = new Map<string, { otp: string, expires: number }>();
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL || '',
+  token: process.env.KV_REST_API_TOKEN || '',
+});
 
-// Export the store so verify-otp can access it (Note: This only works in the same process)
-export { otpStore };
+const OTP_TTL_SECONDS = 10 * 60; // 10 minutes
 
 export async function POST(req: Request) {
   try {
@@ -16,24 +17,24 @@ export async function POST(req: Request) {
     }
 
     let otp = Math.floor(1000 + Math.random() * 9000).toString();
-    const expires = Date.now() + 10 * 60 * 1000; // 10 minutes
 
     const RESEND_API_KEY = process.env.RESEND_API_KEY;
 
     if (!RESEND_API_KEY || RESEND_API_KEY === 're_123456789' || RESEND_API_KEY.includes('your_')) {
-      otp = '0000'; // Hardcode OTP for quick testing without sending real emails
-      console.warn("[JET] Using dummy RESEND_API_KEY. Falling back to Log only. OTP is 0000.");
-      
-      otpStore.set(email, { otp, expires });
-      
-      return NextResponse.json({ 
-        success: true, 
-        message: 'OTP sent (Debug Mode: ใช้รหัส 0000 ได้เลย)', 
-        debug: true 
+      otp = '0000';
+      console.warn('[JET] Using dummy RESEND_API_KEY. Falling back to Log only. OTP is 0000.');
+
+      await redis.set(`jet_otp_${email.toLowerCase()}`, otp, { ex: OTP_TTL_SECONDS });
+
+      return NextResponse.json({
+        success: true,
+        message: 'OTP sent (Debug Mode: ใช้รหัส 0000 ได้เลย)',
+        debug: true,
       });
     }
 
-    otpStore.set(email, { otp, expires });
+    // Store OTP in Redis with TTL (works across Vercel serverless instances)
+    await redis.set(`jet_otp_${email.toLowerCase()}`, otp, { ex: OTP_TTL_SECONDS });
 
     // Send Real Email via Resend API
     try {
@@ -41,7 +42,7 @@ export async function POST(req: Request) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${RESEND_API_KEY}`,
+          Authorization: `Bearer ${RESEND_API_KEY}`,
         },
         body: JSON.stringify({
           from: 'Jet Music <onboarding@resend.dev>',
@@ -66,29 +67,28 @@ export async function POST(req: Request) {
       const data = await response.json();
 
       if (!response.ok) {
-        // Email sending failed (e.g. domain not verified) - fall back to debug mode with OTP 0000
+        // Email sending failed — fall back to debug mode
         console.warn('[JET] Email sending failed, falling back to debug mode. Error:', data.message);
         const debugOtp = '0000';
-        otpStore.set(email, { otp: debugOtp, expires });
-        return NextResponse.json({ 
-          success: true, 
+        await redis.set(`jet_otp_${email.toLowerCase()}`, debugOtp, { ex: OTP_TTL_SECONDS });
+        return NextResponse.json({
+          success: true,
           message: 'ไม่สามารถส่งอีเมลได้ (Debug Mode) ใช้รหัส 0000',
           debug: true,
-          debugOtp: debugOtp
+          debugOtp: debugOtp,
         });
       }
 
       return NextResponse.json({ success: true, message: 'OTP sent to your email' });
     } catch (emailError) {
-      // Network error sending email - fall back to debug mode
       console.warn('[JET] Email network error, falling back to debug mode:', emailError);
       const debugOtp = '0000';
-      otpStore.set(email, { otp: debugOtp, expires });
-      return NextResponse.json({ 
-        success: true, 
+      await redis.set(`jet_otp_${email.toLowerCase()}`, debugOtp, { ex: OTP_TTL_SECONDS });
+      return NextResponse.json({
+        success: true,
         message: 'ไม่สามารถส่งอีเมลได้ (Debug Mode) ใช้รหัส 0000',
         debug: true,
-        debugOtp: debugOtp
+        debugOtp: debugOtp,
       });
     }
   } catch (error) {
