@@ -154,6 +154,7 @@ export default function Player() {
       const logs = JSON.parse(localStorage.getItem('jet_debug_logs') || '[]');
       setDebugLogList(logs);
       if (!showDebugOverlay && isNativeDNA) {
+        sendDebugLogs('overlay-open');
         NativeAudioPlayer.getCrashLog().then((res: any) => {
           if (res.exists && res.content) {
             setCrashLog(res.content);
