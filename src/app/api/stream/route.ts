@@ -161,8 +161,72 @@ async function probeStreamUrl(streamUrl: string): Promise<boolean> {
   }
 }
 
+async function resolveCobaltAudioUrl(videoId: string): Promise<string | null> {
+  const key = process.env.COBALT_API_KEY;
+  if (!key) return null;
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch('https://api.cobalt.tools/api/json', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${key}`
+      },
+      body: JSON.stringify({
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        videoQuality: '360',
+        audioFormat: 'mp3',
+        isAudioOnly: true,
+        filenameStyle: 'basic'
+      }),
+      signal: controller.signal,
+      cache: 'no-store'
+    });
+    if (!res.ok) {
+      console.warn(`[JET-STREAM] Cobalt HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      return null;
+    }
+    const data: any = await res.json();
+    if (data.status === 'redirect' || data.status === 'tunnel') {
+      if (data.url && await probeStreamUrl(data.url)) {
+        return data.url;
+      }
+      return data.url || null;
+    }
+    if (data.status === 'picker' && data.picker) {
+      const first = Object.values(data.picker)[0] as any;
+      if (first?.url) return first.url;
+    }
+    if (data.status === 'error') {
+      console.warn(`[JET-STREAM] Cobalt error: ${JSON.stringify(data.error)}`);
+    }
+  } catch (e: any) {
+    console.warn(`[JET-STREAM] Cobalt request failed: ${e.message}`);
+  } finally {
+    clearTimeout(id);
+  }
+  return null;
+}
+
 async function getUnifiedStreamUrl(videoId: string, errors: string[]): Promise<string | null> {
-  // --- 0. @distube/ytdl-core (primary, direct googlevideo URLs) ---
+  // --- 0. Cobalt API (preferred, bypasses YouTube bot-block on Vercel IPs) ---
+  if (process.env.COBALT_API_KEY) {
+    console.log('[JET-STREAM] Cobalt API key detected, trying Cobalt first...');
+    try {
+      const cobaltUrl = await resolveCobaltAudioUrl(videoId);
+      if (cobaltUrl) {
+        console.log(`[JET-STREAM] ✅ Cobalt direct URL: ${cobaltUrl.slice(0, 60)}...`);
+        return cobaltUrl;
+      }
+      console.warn('[JET-STREAM] Cobalt failed, falling through');
+    } catch (err: any) {
+      errors.push(`cobalt: ${err.message}`);
+    }
+  }
+
+  // --- 1. @distube/ytdl-core (direct googlevideo URLs) ---
   // ytdl-core returns real, signed videoplayback URLs that play in ExoPlayer/browser
   // and is more resilient to YouTube bot detection than Invidious/Piped mirrors.
   try {
