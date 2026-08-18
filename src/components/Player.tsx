@@ -63,6 +63,30 @@ export default function Player() {
     }
   };
 
+  // 📤 Auto-upload local debug logs to the server when an error happens,
+  // so the native/streaming failure can be diagnosed without USB access.
+  const sendDebugLogs = (reason: string, extra?: any) => {
+    try {
+      const logs = JSON.parse(localStorage.getItem('jet_debug_logs') || '[]');
+      const payload = [
+        `--- DEBUG REPORT [${reason}] ---`,
+        `Time: ${new Date().toString()}`,
+        `UA: ${navigator.userAgent}`,
+        `Native: ${isNativeDNA}`,
+        `Track: ${currentTrack?.title} | ${currentTrack?.id}`,
+        `finalAudioSrc: ${finalAudioSrc?.slice(0, 120)}`,
+        extra ? `Extra: ${JSON.stringify(extra)}` : '',
+        '--- LOGS ---',
+        ...logs,
+      ].join('\n');
+      fetch(`${SERVER_URL}/api/crash-report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: payload, device: 'WEB', appVersion: '4.3.4-web' }),
+      }).catch(() => {});
+    } catch {}
+  };
+
   // Seek helper that works in BOTH web (react-player) and native (ExoPlayer)
   const seekToTime = (seconds: number) => {
     if (isNativeDNA) {
@@ -82,6 +106,7 @@ export default function Player() {
     const setupListeners = async () => {
       errorListener = await NativeAudioPlayer.addListener('error', (data: any) => {
           addDebugLog(`🚨 NATIVE ERROR: ${data.error}`);
+          sendDebugLogs('native-error', { nativeError: data.error });
           showToast('เกิดข้อผิดพลาดในการเล่นเพลงบนมือถือ กำลังเล่นเพลงถัดไป...', 'error');
           setTimeout(() => {
               playNext();
@@ -1037,6 +1062,8 @@ export default function Player() {
               onEnded={() => handleTrackEnded()}
               onError={(e: any) => {
                 console.log("[JET] Player error:", e);
+                addDebugLog(`🚨 WEB PLAYER ERROR: ${e?.message || JSON.stringify(e) || 'unknown'}`);
+                sendDebugLogs('web-player-error', { src: finalAudioSrc?.slice(0, 120) });
                 if (isYouTube && !proxyFailed) {
                    console.log("[JET] Proxy failed, falling back to direct YouTube source...");
                    setProxyFailed(true);
