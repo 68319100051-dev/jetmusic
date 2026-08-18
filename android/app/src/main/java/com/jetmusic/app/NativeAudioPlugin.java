@@ -98,23 +98,29 @@ public class NativeAudioPlugin extends Plugin implements MusicService.PlayerCall
     }
 
     // ── Plugin Methods (called from JS) ──────────────────
+    // ⚠️ ExoPlayer MUST be accessed on the main thread only.
+    // Capacitor runs plugin methods on the "CapacitorPlugins" HandlerThread,
+    // so every call that touches the player is dispatched via executeOnMainThread.
+    // (PluginCall.resolve/reject are safe to call from any thread.)
 
     @PluginMethod
     public void setPlaylist(PluginCall call) {
-        try {
-            JSObject current = call.getObject("current");
-            JSObject next    = call.getObject("next");
+        JSObject current = call.getObject("current");
+        JSObject next    = call.getObject("next");
 
-            if (current == null || !isBound || musicService == null) {
-                call.reject("Invalid request or service not ready");
-                return;
-            }
-
-            musicService.setPlaylist(current, next);
-            call.resolve();
-        } catch (Exception e) {
-            call.reject("setPlaylist failed: " + e.getMessage());
+        if (current == null || !isBound || musicService == null) {
+            call.reject("Invalid request or service not ready");
+            return;
         }
+
+        getBridge().executeOnMainThread(() -> {
+            try {
+                musicService.setPlaylist(current, next);
+                call.resolve();
+            } catch (Exception e) {
+                call.reject("setPlaylist failed: " + e.getMessage());
+            }
+        });
     }
 
     @PluginMethod
@@ -132,35 +138,49 @@ public class NativeAudioPlugin extends Plugin implements MusicService.PlayerCall
             call.reject("MusicService not ready");
             return;
         }
-        musicService.playUrl(url, title, artist, coverUrl);
-        call.resolve();
+        getBridge().executeOnMainThread(() -> {
+            try {
+                musicService.playUrl(url, title, artist, coverUrl);
+                call.resolve();
+            } catch (Exception e) {
+                call.reject("play failed: " + e.getMessage());
+            }
+        });
     }
 
     @PluginMethod
     public void pause(PluginCall call) {
-        if (isBound && musicService != null) musicService.pause();
-        call.resolve();
+        getBridge().executeOnMainThread(() -> {
+            if (isBound && musicService != null) musicService.pause();
+            call.resolve();
+        });
     }
 
     @PluginMethod
     public void resume(PluginCall call) {
-        if (isBound && musicService != null) musicService.resume();
-        call.resolve();
+        getBridge().executeOnMainThread(() -> {
+            if (isBound && musicService != null) musicService.resume();
+            call.resolve();
+        });
     }
 
     @PluginMethod
     public void stop(PluginCall call) {
-        if (isBound && musicService != null) musicService.stop();
-        call.resolve();
+        getBridge().executeOnMainThread(() -> {
+            if (isBound && musicService != null) musicService.stop();
+            call.resolve();
+        });
     }
 
     @PluginMethod
     public void seekTo(PluginCall call) {
         Long posMs = call.getLong("posMs");
-        if (posMs != null && isBound && musicService != null) {
-            musicService.seekTo(posMs);
-        }
-        call.resolve();
+        getBridge().executeOnMainThread(() -> {
+            if (posMs != null && isBound && musicService != null) {
+                musicService.seekTo(posMs);
+            }
+            call.resolve();
+        });
     }
 
     @PluginMethod
@@ -176,18 +196,20 @@ public class NativeAudioPlugin extends Plugin implements MusicService.PlayerCall
 
     @PluginMethod
     public void getStatus(PluginCall call) {
-        JSObject result = new JSObject();
-        if (isBound && musicService != null) {
-            result.put("isPlaying",       musicService.isPlaying());
-            result.put("currentPosition", musicService.getCurrentPosition());
-            result.put("duration",        musicService.getDuration());
-            result.put("ready",           true);
-            result.put("serviceAlive",    true);
-        } else {
-            result.put("ready", false);
-            result.put("serviceAlive", false);
-        }
-        call.resolve(result);
+        getBridge().executeOnMainThread(() -> {
+            JSObject result = new JSObject();
+            if (isBound && musicService != null) {
+                result.put("isPlaying",       musicService.isPlaying());
+                result.put("currentPosition", musicService.getCurrentPosition());
+                result.put("duration",        musicService.getDuration());
+                result.put("ready",           true);
+                result.put("serviceAlive",    true);
+            } else {
+                result.put("ready", false);
+                result.put("serviceAlive", false);
+            }
+            call.resolve(result);
+        });
     }
 
     // ── MusicService.PlayerCallback events ───────────────
