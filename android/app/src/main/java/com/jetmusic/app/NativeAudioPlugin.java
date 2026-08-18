@@ -14,6 +14,11 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStreamReader;
+
 /**
  * JS calls: NativeAudioPlayer.play(), .pause(), .resume(), .stop(), .seekTo(), .getStatus(), .setPlaylist()
  * Events:  "trackEnded", "playbackStateChanged", "error"
@@ -27,10 +32,15 @@ public class NativeAudioPlugin extends Plugin implements MusicService.PlayerCall
     private final ServiceConnection connection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
-            MusicService.LocalBinder binder = (MusicService.LocalBinder) service;
-            musicService = binder.getService();
-            musicService.setCallback(NativeAudioPlugin.this);
-            isBound = true;
+            try {
+                MusicService.LocalBinder binder = (MusicService.LocalBinder) service;
+                musicService = binder.getService();
+                musicService.setCallback(NativeAudioPlugin.this);
+                isBound = true;
+            } catch (Exception e) {
+                isBound = false;
+                System.out.println("JetMusic: service bind failed: " + e.getMessage());
+            }
         }
         @Override
         public void onServiceDisconnected(ComponentName name) {
@@ -91,16 +101,20 @@ public class NativeAudioPlugin extends Plugin implements MusicService.PlayerCall
 
     @PluginMethod
     public void setPlaylist(PluginCall call) {
-        JSObject current = call.getObject("current");
-        JSObject next    = call.getObject("next");
+        try {
+            JSObject current = call.getObject("current");
+            JSObject next    = call.getObject("next");
 
-        if (current == null || !isBound || musicService == null) {
-            call.reject("Invalid request or service not ready");
-            return;
+            if (current == null || !isBound || musicService == null) {
+                call.reject("Invalid request or service not ready");
+                return;
+            }
+
+            musicService.setPlaylist(current, next);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("setPlaylist failed: " + e.getMessage());
         }
-
-        musicService.setPlaylist(current, next);
-        call.resolve();
     }
 
     @PluginMethod
@@ -177,6 +191,42 @@ public class NativeAudioPlugin extends Plugin implements MusicService.PlayerCall
     }
 
     // ── MusicService.PlayerCallback events ───────────────
+
+    /**
+     * Read the crash log (if any) written by JetMusicApp's crash catcher.
+     * Also returns app version + device info. Used by the debug overlay.
+     */
+    @PluginMethod
+    public void getCrashLog(PluginCall call) {
+        JSObject result = new JSObject();
+        try {
+            Context ctx = getContext();
+            result.put("appVersion", ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0).versionName);
+            result.put("appVersionCode", ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0).versionCode);
+            result.put("device", android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL
+                    + " / Android " + android.os.Build.VERSION.RELEASE);
+
+            File dir = ctx.getExternalFilesDir(null);
+            if (dir == null) dir = ctx.getFilesDir();
+            File log = new File(dir, "crash_log.txt");
+            if (log.exists() && log.length() > 0) {
+                StringBuilder sb = new StringBuilder();
+                try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(log)))) {
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        sb.append(line).append("\n");
+                    }
+                }
+                result.put("exists", true);
+                result.put("content", sb.toString());
+            } else {
+                result.put("exists", false);
+            }
+            call.resolve(result);
+        } catch (Exception e) {
+            call.reject("getCrashLog failed: " + e.getMessage());
+        }
+    }
 
     @Override
     public void onTrackEnded() {

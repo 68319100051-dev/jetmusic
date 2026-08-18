@@ -110,11 +110,13 @@ public class MusicService extends MediaSessionService {
                 if (callback != null) callback.onError(msg);
                 
                 // Show error right on the banner by updating player metadata
-                MediaMetadata errorMeta = new MediaMetadata.Builder()
-                        .setTitle("⚠️ Playback Error")
-                        .setArtist(msg)
-                        .build();
-                player.setPlaylistMetadata(errorMeta);
+                if (player != null) {
+                    MediaMetadata errorMeta = new MediaMetadata.Builder()
+                            .setTitle("⚠️ Playback Error")
+                            .setArtist(msg)
+                            .build();
+                    player.setPlaylistMetadata(errorMeta);
+                }
             }
         });
 
@@ -148,6 +150,7 @@ public class MusicService extends MediaSessionService {
     public void setPlaylist(com.getcapacitor.JSObject current, com.getcapacitor.JSObject next) {
         new Handler(Looper.getMainLooper()).post(() -> {
             try {
+                ensurePlayer();
                 java.util.List<MediaItem> items = new java.util.ArrayList<>();
                 
                 // Current Track
@@ -170,6 +173,7 @@ public class MusicService extends MediaSessionService {
                     items.add(nextItem);
                 }
 
+                player.stop();
                 player.setMediaItems(items);
                 player.prepare();
                 player.play();
@@ -231,24 +235,37 @@ public class MusicService extends MediaSessionService {
 
     private void startPlayback(String url, MediaMetadata metadata) {
         new Handler(Looper.getMainLooper()).post(() -> {
-            MediaItem mediaItem = new MediaItem.Builder()
-                    .setUri(url)
-                    .setMediaMetadata(metadata)
-                    .build();
-            player.setMediaItem(mediaItem);
-            player.prepare();
-            player.play();
+            try {
+                ensurePlayer();
+                MediaItem mediaItem = new MediaItem.Builder()
+                        .setUri(url)
+                        .setMediaMetadata(metadata)
+                        .build();
+                player.stop();
+                player.setMediaItem(mediaItem);
+                player.prepare();
+                player.play();
+            } catch (Exception e) {
+                if (callback != null) callback.onError("Playback Error: " + e.getMessage());
+            }
         });
     }
 
-    public void pause() { player.pause(); }
-    public void resume() { player.play(); }
-    public void stop() { player.stop(); }
-    public void seekTo(long posMs) { player.seekTo(posMs); }
+    // Re-create the player if the service was recycled without a full onCreate
+    private void ensurePlayer() {
+        if (player == null) {
+            initializePlayer();
+        }
+    }
 
-    public boolean isPlaying()         { return player.isPlaying(); }
-    public long getCurrentPosition()   { return player.getCurrentPosition(); }
-    public long getDuration()          { return player.getDuration(); }
+    public void pause() { if (player != null) player.pause(); }
+    public void resume() { if (player != null) player.play(); }
+    public void stop() { if (player != null) player.stop(); }
+    public void seekTo(long posMs) { if (player != null) player.seekTo(posMs); }
+
+    public boolean isPlaying()         { return player != null && player.isPlaying(); }
+    public long getCurrentPosition()   { return player != null ? player.getCurrentPosition() : 0L; }
+    public long getDuration()          { return player != null ? player.getDuration() : 0L; }
 
     @Override
     public void onTaskRemoved(Intent rootIntent) {

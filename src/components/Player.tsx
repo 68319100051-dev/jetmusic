@@ -122,11 +122,21 @@ export default function Player() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [showDebugOverlay, setShowDebugOverlay] = useState(false);
   const [debugLogList, setDebugLogList] = useState<string[]>([]);
+  const [crashLog, setCrashLog] = useState<string>('');
 
   const toggleDebugOverlay = () => {
     if (typeof window !== 'undefined') {
       const logs = JSON.parse(localStorage.getItem('jet_debug_logs') || '[]');
       setDebugLogList(logs);
+      if (!showDebugOverlay && isNativeDNA) {
+        NativeAudioPlayer.getCrashLog().then((res: any) => {
+          if (res.exists && res.content) {
+            setCrashLog(res.content);
+          } else {
+            setCrashLog(`(ไม่มี crash log) | App v${res.appVersion || '?'} (code ${res.appVersionCode || '?'}) | ${res.device || ''}`);
+          }
+        }).catch((e: any) => setCrashLog(`อ่าน crash log ไม่ได้: ${e?.message || e}`));
+      }
     }
     setShowDebugOverlay(prev => !prev);
   };
@@ -1445,7 +1455,20 @@ export default function Player() {
               debugLogList.map((log, i) => <div key={i} style={{ wordBreak: 'break-all' }}>{log}</div>)
             )}
           </div>
+          {crashLog && (
+            <div style={{ marginTop: '16px', borderTop: '1px solid #39ff14', paddingTop: '10px' }}>
+              <div style={{ color: '#ff4d4d', fontWeight: 'bold', marginBottom: '6px' }}>CRASH LOG (native)</div>
+              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0, fontSize: '0.7rem', color: '#ffb3b3' }}>{crashLog}</pre>
+            </div>
+          )}
           <div style={{ marginTop: '20px', display: 'flex', gap: '10px' }}>
+            <button onClick={() => {
+              if (isNativeDNA) {
+                NativeAudioPlayer.getCrashLog().then((res: any) => {
+                  setCrashLog(res.exists && res.content ? res.content : `(ไม่มี crash log) | App v${res.appVersion} (code ${res.appVersionCode}) | ${res.device}`);
+                }).catch((e: any) => setCrashLog(`อ่าน crash log ไม่ได้: ${e?.message || e}`));
+              }
+            }} style={{ color: '#ff4d4d', background: 'transparent', border: '1px solid #ff4d4d', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem' }}>GET CRASH LOG</button>
             <button onClick={() => { localStorage.removeItem('jet_debug_logs'); setDebugLogList([]); }} style={{ color: '#ff4d4d', background: 'transparent', border: '1px solid #ff4d4d', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem' }}>CLEAR LOGS</button>
             <button onClick={() => {
               if (typeof window !== 'undefined') {

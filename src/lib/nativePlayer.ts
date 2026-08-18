@@ -18,6 +18,13 @@ export interface NativeAudioPlayerPlugin {
     duration: number;
     serviceAlive?: boolean;
   }>;
+  getCrashLog(): Promise<{
+    exists: boolean;
+    content?: string;
+    appVersion?: string;
+    appVersionCode?: number;
+    device?: string;
+  }>;
   openSettings(): Promise<void>;
   addListener(
     eventName: 'trackEnded',
