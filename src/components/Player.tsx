@@ -63,6 +63,15 @@ export default function Player() {
     }
   };
 
+  // Seek helper that works in BOTH web (react-player) and native (ExoPlayer)
+  const seekToTime = (seconds: number) => {
+    if (isNativeDNA) {
+      NativeAudioPlayer.seekTo({ posMs: Math.round(seconds * 1000) }).catch(() => {});
+    } else if (playerRef.current && typeof playerRef.current.seekTo === 'function') {
+      playerRef.current.seekTo(seconds);
+    }
+  };
+
   useEffect(() => {
     if (!isNativeDNA) return;
     addDebugLog(`Native DNA Ready ✅`);
@@ -86,9 +95,21 @@ export default function Player() {
 
     setupListeners();
 
+    // 🐞 Global JS error capture so we can pin down crashes/errors happening in the WebView
+    const onJsError = (e: any) => {
+      addDebugLog(`🐞 JS ERROR: ${e?.message || 'unknown'}`);
+    };
+    const onUnhandledRejection = (e: any) => {
+      addDebugLog(`🐞 UNHANDLED: ${e?.reason?.message || e?.reason || 'unknown'}`);
+    };
+    window.addEventListener('error', onJsError);
+    window.addEventListener('unhandledrejection', onUnhandledRejection);
+
     return () => { 
         if (errorListener) errorListener.remove(); 
         if (stateListener) stateListener.remove();
+        window.removeEventListener('error', onJsError);
+        window.removeEventListener('unhandledrejection', onUnhandledRejection);
     };
   }, [isNativeDNA, playNext, showToast]);
   
@@ -178,7 +199,8 @@ export default function Player() {
     try {
       const res = await fetch(`/api/lyrics?title=${encodeURIComponent(currentTrack.title)}&artist=${encodeURIComponent(currentTrack.artist)}`);
       const data = await res.json();
-      if (data.plainLyrics) {
+      // Accept either plain or synced lyrics (lrclib may return only one of them)
+      if (data.plainLyrics || data.syncedLyrics) {
         let parsed = null;
         if (data.syncedLyrics) {
            parsed = parseLrc(data.syncedLyrics);
@@ -191,7 +213,7 @@ export default function Player() {
            error: null 
         });
       } else {
-        setLyricsData({ plainLyrics: null, syncedLyrics: null, parsedLines: null, isLoading: false, error: 'ไม่พบเนื้อเพลงซิงเกิลนี้' });
+        setLyricsData({ plainLyrics: null, syncedLyrics: null, parsedLines: null, isLoading: false, error: data.error || 'ไม่พบเนื้อเพลงซิงเกิลนี้' });
       }
     } catch (e) {
       setLyricsData({ plainLyrics: null, syncedLyrics: null, parsedLines: null, isLoading: false, error: 'เกิดข้อผิดพลาดในการโหลดเนื้อเพลง' });
@@ -554,9 +576,9 @@ export default function Player() {
         onPause: () => pauseTrack(),
         onNext: () => playNext(),
         onPrev: () => playPrevious(),
-        onSeekTo: (time) => { if (playerRef.current) playerRef.current.seekTo(time); },
-        onSeekBackward: (skip) => { if (playerRef.current) playerRef.current.seekTo(Math.max(playedSeconds - skip, 0)); },
-        onSeekForward: (skip) => { if (playerRef.current) playerRef.current.seekTo(Math.min(playedSeconds + skip, duration)); }
+        onSeekTo: (time) => seekToTime(time),
+        onSeekBackward: (skip) => seekToTime(Math.max(playedSeconds - skip, 0)),
+        onSeekForward: (skip) => seekToTime(Math.min(playedSeconds + skip, duration))
       });
     }
   }, [currentTrack?.id]);
@@ -684,13 +706,17 @@ export default function Player() {
 
         addDebugLog(`🔍 Fetching stream URL for ${track.title.substring(0, 15)}...`);
         const res = await fetch(`${SERVER_URL}/api/stream?id=${encodeURIComponent(track.id)}&fmt=json`);
-        if (!res.ok) throw new Error(`API ${res.status}`);
+        if (!res.ok) {
+          addDebugLog(`⚠️ Stream API HTTP ${res.status}`);
+          throw new Error(`API ${res.status}`);
+        }
         const data = await res.json();
         if (data.url) {
           setUrlCache(prev => ({ ...prev, [track.id]: { url: data.url, expiresAt: Date.now() + 2 * 60 * 60 * 1000 } }));
-          addDebugLog(`✅ Stream URL acquired!`);
+          addDebugLog(`✅ Stream URL acquired (${data.url.slice(0, 40)}...)`);
           return data.url;
         }
+        addDebugLog('⚠️ Stream API returned no url — using proxy');
         return `${SERVER_URL}/api/stream?id=${encodeURIComponent(track.id)}`;
       } catch (e: any) {
         addDebugLog(`⚠️ URL fetch failed: ${e.message}`);
@@ -723,27 +749,32 @@ export default function Player() {
 
       addDebugLog(`🎵 ExoPlayer Sync: ${currentTrack.title.substring(0, 15)}...`);
 
-      NativeAudioPlayer.setPlaylist({
-        current: {
-          url: currentUrl,
-          title: currentTrack.title,
-          artist: currentTrack.artist,
-          coverUrl: currentTrack.coverUrl || '',
-        },
-        next: (nextTrack && nextUrl) ? {
-          url: nextUrl,
-          title: nextTrack.title,
-          artist: nextTrack.artist,
-          coverUrl: nextTrack.coverUrl || '',
-        } : undefined
-      }).then(() => {
-          addDebugLog(`✅ ExoPlayer Ready (Next: ${nextTrack?.title.substring(0, 10) || 'None'})`);
-      }).catch((e: any) => {
-          addDebugLog(`❌ ExoPlayer Error: ${e.message}`);
-      });
+      try {
+        await NativeAudioPlayer.setPlaylist({
+          current: {
+            url: currentUrl,
+            title: currentTrack.title,
+            artist: currentTrack.artist,
+            coverUrl: currentTrack.coverUrl || '',
+          },
+          next: (nextTrack && nextUrl) ? {
+            url: nextUrl,
+            title: nextTrack.title,
+            artist: nextTrack.artist,
+            coverUrl: nextTrack.coverUrl || '',
+          } : undefined
+        });
+        addDebugLog(`✅ ExoPlayer Ready (Next: ${nextTrack?.title.substring(0, 10) || 'None'})`);
+      } catch (e: any) {
+        addDebugLog(`❌ ExoPlayer setPlaylist rejected: ${e?.message || e}`);
+      }
     };
 
-    syncToExoPlayer();
+    try {
+      syncToExoPlayer();
+    } catch (e: any) {
+      addDebugLog(`❌ Sync threw: ${e?.message || e}`);
+    }
   }, [currentTrack?.id, isNativeDNA]);
 
   // Sync pause / resume with native ExoPlayer
@@ -893,9 +924,7 @@ export default function Player() {
 
   const handleSeekMouseUp = (e: React.MouseEvent<HTMLInputElement> | React.TouchEvent<HTMLInputElement>) => {
     setSeeking(false);
-    if (playerRef.current && typeof playerRef.current.seekTo === 'function') {
-      playerRef.current.seekTo(parseFloat((e.target as HTMLInputElement).value));
-    }
+    seekToTime(parseFloat((e.target as HTMLInputElement).value));
   };
 
   const togglePlay = (e?: React.MouseEvent) => {
@@ -1132,9 +1161,7 @@ export default function Player() {
                              if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
                              setPressingLineIndex(null);
                              if (!isLongPressingRef.current) {
-                                if (playerRef.current && typeof playerRef.current.seekTo === 'function') {
-                                   playerRef.current.seekTo(line.time);
-                                }
+                                seekToTime(line.time);
                              }
                              isLongPressingRef.current = false;
                           }}
