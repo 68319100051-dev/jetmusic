@@ -161,69 +161,95 @@ async function probeStreamUrl(streamUrl: string): Promise<boolean> {
   }
 }
 
-async function resolveCobaltAudioUrl(videoId: string): Promise<string | null> {
-  const key = process.env.COBALT_API_KEY;
-  if (!key) return null;
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), 15000);
-  try {
-    const res = await fetch('https://api.cobalt.tools/api/json', {
-      method: 'POST',
-      headers: {
+const COBALT_PUBLIC_INSTANCES = [
+  'https://cobalt.aelew.dev',
+  'https://co.wuk.sh',
+  'https://cobalt-api.kwiatekmiki.com',
+  'https://cobalt.api.mint.lgbt',
+  'https://api.cobalt.rocks'
+];
+
+async function cobaltRequest(instance: string, videoId: string, key: string | undefined): Promise<string | null> {
+  const endpoints = instance.endsWith('/') ? [`${instance}`, `${instance}api/json`] : [`${instance}/`, `${instance}/api/json`];
+  const body = {
+    url: `https://www.youtube.com/watch?v=${videoId}`,
+    audioFormat: 'mp3',
+    audioBitrate: '128',
+    downloadMode: 'audio',
+    filenameStyle: 'basic',
+    disableMetadata: true
+  };
+  for (const endpoint of endpoints) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), 12000);
+    try {
+      const headers: Record<string, string> = {
         Accept: 'application/json',
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${key}`
-      },
-      body: JSON.stringify({
-        url: `https://www.youtube.com/watch?v=${videoId}`,
-        videoQuality: '360',
-        audioFormat: 'mp3',
-        isAudioOnly: true,
-        filenameStyle: 'basic'
-      }),
-      signal: controller.signal,
-      cache: 'no-store'
-    });
-    if (!res.ok) {
-      console.warn(`[JET-STREAM] Cobalt HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
-      return null;
-    }
-    const data: any = await res.json();
-    if (data.status === 'redirect' || data.status === 'tunnel') {
-      if (data.url && await probeStreamUrl(data.url)) {
-        return data.url;
+        'Content-Type': 'application/json'
+      };
+      if (key) headers.Authorization = `Api-Key ${key}`;
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: controller.signal,
+        cache: 'no-store'
+      });
+      if (!res.ok) continue;
+      const data: any = await res.json();
+      if (data.status === 'redirect' || data.status === 'tunnel' || data.status === 'local-processing') {
+        const url = data.url || (Array.isArray(data.tunnel) ? data.tunnel[0] : null);
+        if (url) {
+          if (await probeStreamUrl(url)) return url;
+          return url;
+        }
       }
-      return data.url || null;
+      if (data.status === 'picker' && Array.isArray(data.picker)) {
+        const first = data.picker.find((p: any) => p.type !== 'photo');
+        if (first?.url) return first.url;
+      }
+    } catch {
+      // try next endpoint / instance
+    } finally {
+      clearTimeout(id);
     }
-    if (data.status === 'picker' && data.picker) {
-      const first = Object.values(data.picker)[0] as any;
-      if (first?.url) return first.url;
-    }
-    if (data.status === 'error') {
-      console.warn(`[JET-STREAM] Cobalt error: ${JSON.stringify(data.error)}`);
-    }
-  } catch (e: any) {
-    console.warn(`[JET-STREAM] Cobalt request failed: ${e.message}`);
-  } finally {
-    clearTimeout(id);
   }
   return null;
 }
 
+async function resolveCobaltAudioUrl(videoId: string, errors: string[]): Promise<string | null> {
+  const key = process.env.COBALT_API_KEY;
+  const instances = key || process.env.COBALT_API_BASE
+    ? [process.env.COBALT_API_BASE || 'https://api.cobalt.tools']
+    : COBALT_PUBLIC_INSTANCES;
+
+  const winners: { url: string; instance: string }[] = [];
+  const results = await Promise.allSettled(instances.map(async (instance) => {
+    const url = await cobaltRequest(instance, videoId, key);
+    if (url) winners.push({ url, instance });
+  }));
+  if (winners.length) {
+    winners.sort((a, b) => a.instance.localeCompare(b.instance));
+    console.log(`[JET-STREAM] ✅ Cobalt winner: ${winners[0].instance}`);
+    return winners[0].url;
+  }
+  results.forEach((r, i) => {
+    if (r.status === 'rejected') errors.push(`cobalt ${instances[i]}: ${r.reason?.message || r.reason}`);
+  });
+  return null;
+}
+
 async function getUnifiedStreamUrl(videoId: string, errors: string[]): Promise<string | null> {
-  // --- 0. Cobalt API (preferred, bypasses YouTube bot-block on Vercel IPs) ---
-  if (process.env.COBALT_API_KEY) {
-    console.log('[JET-STREAM] Cobalt API key detected, trying Cobalt first...');
-    try {
-      const cobaltUrl = await resolveCobaltAudioUrl(videoId);
-      if (cobaltUrl) {
-        console.log(`[JET-STREAM] ✅ Cobalt direct URL: ${cobaltUrl.slice(0, 60)}...`);
-        return cobaltUrl;
-      }
-      console.warn('[JET-STREAM] Cobalt failed, falling through');
-    } catch (err: any) {
-      errors.push(`cobalt: ${err.message}`);
+  // --- 0. Cobalt (bypasses YouTube bot-block; uses Cobalt API key if set, else scans public instances) ---
+  try {
+    const cobaltUrl = await resolveCobaltAudioUrl(videoId, errors);
+    if (cobaltUrl) {
+      console.log(`[JET-STREAM] ✅ Cobalt direct URL: ${cobaltUrl.slice(0, 60)}...`);
+      return cobaltUrl;
     }
+    console.warn('[JET-STREAM] Cobalt failed, falling through');
+  } catch (err: any) {
+    errors.push(`cobalt: ${err.message}`);
   }
 
   // --- 1. @distube/ytdl-core (direct googlevideo URLs) ---
