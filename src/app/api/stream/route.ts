@@ -108,8 +108,75 @@ async function validateInvidiousInstance(uri: string, videoId: string, timeout =
   return null;
 }
 
+async function resolveYtdlAudioUrl(videoId: string): Promise<string | null> {
+  const ytdl = await import('@distube/ytdl-core');
+  try {
+    const url = `https://www.youtube.com/watch?v=${videoId}`;
+    const info = await ytdl.getInfo(url, {
+      lang: 'en',
+      requestOptions: {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }
+      }
+    });
+    const formats = (info.formats || []) as any[];
+    const audioOnly = formats.filter((f: any) => (f.mimeType || '').startsWith('audio/') && f.url);
+    const candidates = (audioOnly.length ? audioOnly : formats.filter((f: any) => f.url && (f.mimeType || '').includes('mp4a')))
+      .sort((a: any, b: any) => (b.audioBitrate || 0) - (a.audioBitrate || 0));
+    if (!candidates.length) return null;
+
+    // Verify the signed URL actually streams before returning it
+    for (const f of candidates) {
+      const ok = await probeStreamUrl(f.url);
+      if (ok) return f.url;
+    }
+  } catch (e: any) {
+    console.warn(`[JET-STREAM] ytdl-core getInfo failed: ${e.message}`);
+  }
+  return null;
+}
+
+async function probeStreamUrl(streamUrl: string): Promise<boolean> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), 3000);
+  try {
+    const res = await fetch(streamUrl, {
+      headers: {
+        Range: 'bytes=0-99',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
+      signal: controller.signal,
+      cache: 'no-store'
+    });
+    const ok = (res.status === 200 || res.status === 206);
+    const ct = (res.headers.get('content-type') || '').toLowerCase();
+    if (ok && (ct.startsWith('audio/') || ct.startsWith('video/') || ct === 'application/octet-stream')) {
+      controller.abort();
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(id);
+  }
+}
+
 async function getUnifiedStreamUrl(videoId: string, errors: string[]): Promise<string | null> {
-  // --- 0. Sticky Invidious Instance Check (Near-Instant Resolution) ---
+  // --- 0. @distube/ytdl-core (primary, direct googlevideo URLs) ---
+  // ytdl-core returns real, signed videoplayback URLs that play in ExoPlayer/browser
+  // and is more resilient to YouTube bot detection than Invidious/Piped mirrors.
+  try {
+    const ytdlUrl = await resolveYtdlAudioUrl(videoId);
+    if (ytdlUrl) {
+      console.log(`[JET-STREAM] ✅ ytdl-core direct URL: ${ytdlUrl.slice(0, 60)}...`);
+      return ytdlUrl;
+    }
+    console.warn('[JET-STREAM] ytdl-core failed, falling through to mirrors');
+  } catch (err: any) {
+    errors.push(`ytdl-core: ${err.message}`);
+  }
+
+  // --- 1. Sticky Invidious Instance Check (Near-Instant Resolution) ---
   if (lastSuccessfulInvidious) {
     try {
       console.log(`[JET-STREAM] Testing sticky Invidious instance: ${lastSuccessfulInvidious}`);
