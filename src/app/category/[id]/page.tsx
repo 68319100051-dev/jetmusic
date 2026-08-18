@@ -115,7 +115,7 @@ export default function CategoryPage() {
           <p className={styles.subtitle}>{isLoading ? '...' : (tracks.length + ' เพลงยอดนิยมสำหรับคุณ')}</p>
           <button 
             className={styles.playAllBtn}
-            onClick={() => tracks.length > 0 && playTrack(tracks[0])}
+            onClick={() => tracks.length > 0 && playTrack(tracks[0], tracks, id === 'trending' ? 'discovery' : 'playlist')}
             disabled={isLoading}
             style={{ opacity: isLoading ? 0.5 : 1 }}
           >

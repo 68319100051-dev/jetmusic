@@ -29,11 +29,11 @@ function Section({ title, children, href, action }: { title: string; children: R
   );
 }
 
-function SongCard({ song }: { song: any }) {
+function SongCard({ song, queue }: { song: any, queue?: any[] }) {
   const { playTrack } = usePlayer();
   
   return (
-    <div className="track-card" onClick={() => playTrack(song)}>
+    <div className="track-card" onClick={() => playTrack(song, queue, 'discovery')}>
       <div className="track-cover-container">
         <img 
           src={song.coverUrl} 
@@ -86,8 +86,8 @@ export default function Home() {
   return (
     <div className="main-content">
       <header className="page-container mb-8">
-        <div className="header-badge inline-block px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-bold mb-3">
-          {user ? 'PREMIUM MEMBER' : 'GUEST DISCOVERY'}
+        <div className="header-badge inline-block px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-sm font-bold mb-3">
+          {user ? 'PREMIUM MEMBER' : 'GUEST DISCOVERY'} • v2.9.5 TRUE SYNC
         </div>
         <h1 className="text-3xl font-black text-white tracking-tight leading-tight">
           {user ? `ยินดีต้อนรับ, ${user.username}` : "Jet Music Discovery"}
@@ -119,7 +119,7 @@ export default function Home() {
                [...Array(6)].map((_, i) => <SkeletonCard key={i} />)
             ) : (
               trending.map((song: any) => (
-                <SongCard key={song.id} song={song} />
+                <SongCard key={song.id} song={song} queue={trending} />
               ))
             )}
           </div>
@@ -131,7 +131,7 @@ export default function Home() {
                [...Array(6)].map((_, i) => <SkeletonCard key={i} />)
             ) : (
               recommended.map((song: any) => (
-                <SongCard key={song.id} song={song} />
+                <SongCard key={song.id} song={song} queue={recommended} />
               ))
             )}
           </div>

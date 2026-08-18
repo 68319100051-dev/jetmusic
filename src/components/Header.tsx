@@ -1,5 +1,6 @@
 'use client';
-import { Search, User, Bell, Disc3 } from 'lucide-react';
+import { Search, User, Bell } from 'lucide-react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -16,7 +17,14 @@ export default function Header() {
           <>
             <Link href="/" style={{ textDecoration: 'none' }}>
               <h1 className="logo">
-                <Disc3 className="spin-slow" size={28} color="#818cf8" /> Jet Music
+                <Image 
+                  src="/icon.png" 
+                  alt="Jet Music Logo" 
+                  width={32} 
+                  height={32} 
+                  className="logo-img"
+                /> 
+                Jet Music
               </h1>
             </Link>
             <div className="header-actions">
@@ -42,7 +50,15 @@ export default function Header() {
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: '12px' }}>
              <h1 className="logo" style={{ fontSize: '1.4rem' }}>
-                <Disc3 size={24} color="#818cf8" /> Jet Search
+                <Image 
+                  src="/icon.png" 
+                  alt="Jet Music Logo" 
+                  width={28} 
+                  height={28} 
+                  className="logo-img"
+                  style={{ width: 28, height: 28 }}
+                /> 
+                Jet Search
              </h1>
              <div style={{ flex: 1 }} />
              <Link href="/profile" className="icon-btn" style={{ padding: 0, overflow: 'hidden' }}>

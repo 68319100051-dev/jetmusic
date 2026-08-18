@@ -1,5 +1,6 @@
 'use client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useState } from 'react';
 import { usePlaylist, Playlist } from '@/contexts/PlaylistContext';
 import { useToast } from '@/contexts/ToastContext';
 import { useModal } from '@/contexts/ModalContext';

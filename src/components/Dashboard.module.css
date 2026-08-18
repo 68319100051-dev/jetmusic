@@ -232,3 +232,171 @@
     text-align: center;
   }
 }
+
+.musicStatsSection {
+  margin-bottom: 40px;
+}
+
+.statsHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.statsBadge {
+  background: rgba(129, 140, 248, 0.15);
+  border: 1px solid rgba(129, 140, 248, 0.3);
+  color: #818cf8;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.dashboardGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.rankCard {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 24px;
+  padding: 24px;
+}
+
+.rankTitle {
+  font-size: 1rem;
+  font-weight: 800;
+  margin: 0 0 20px 0;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rankList {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rankItem {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  position: relative;
+}
+
+.rankNumber {
+  width: 24px;
+  font-size: 1.1rem;
+  font-weight: 900;
+  color: rgba(255,255,255,0.2);
+  text-align: center;
+}
+
+.rankCover {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  object-fit: cover;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.rankInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.rankName {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: white;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rankSub {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin: 2px 0 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trackPlayCount {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #818cf8;
+  padding: 4px 8px;
+  background: rgba(129, 140, 248, 0.1);
+  border-radius: 6px;
+}
+
+.artistList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.artistItem {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: rgba(255,255,255,0.03);
+  padding: 12px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.03);
+  transition: all 0.2s ease;
+}
+
+.artistItem:hover {
+  background: rgba(255,255,255,0.06);
+  transform: translateX(4px);
+}
+
+.artistRankBadge {
+  font-size: 0.9rem;
+  font-weight: 900;
+  color: #c6a0ff;
+  width: 32px;
+}
+
+.artistInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.artistName {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: white;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.artistCount {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin: 2px 0 0;
+}
+
+.spinning {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}

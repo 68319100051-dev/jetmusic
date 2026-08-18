@@ -11,10 +11,28 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Title is required' }, { status: 400 });
   }
 
+  // Clean title from common YouTube junk to improve lyrics search hit rate
+  const cleanTitle = (str: string) => {
+    let clean = str;
+    // Remove content inside brackets/parentheses like (Official Video), [MV], (feat. artist)
+    clean = clean.replace(/\([^)]*\)/g, '');
+    clean = clean.replace(/\[[^\]]*\]/g, '');
+    // Remove specific keywords
+    clean = clean.replace(/(official|lyric|video|audio|mv|teaser|live|cover|remix)/gi, '');
+    // Remove featuring info sometimes outside brackets (e.g., ft. or feat.)
+    clean = clean.replace(/(ft\.|feat\.).*$/gi, '');
+    // Remove multiple spaces, hyphens at the end, etc.
+    clean = clean.replace(/\s+/g, ' ').trim();
+    clean = clean.replace(/-\s*$/, '').trim();
+    return clean || str; // fallback to original if completely stripped
+  };
+
+  const cleanedTitle = cleanTitle(title);
+
   try {
     // Try lrclib.net — free, no API key needed, has synced+plain lyrics
     const query = new URLSearchParams({
-      track_name: title,
+      track_name: cleanedTitle,
       artist_name: artist || '',
     });
 
@@ -26,7 +44,7 @@ export async function GET(request: Request) {
     if (!res.ok) {
       // Try a search fallback if exact match fails
       const searchRes = await fetch(
-        `https://lrclib.net/api/search?q=${encodeURIComponent(`${title} ${artist || ''}`.trim())}`,
+        `https://lrclib.net/api/search?q=${encodeURIComponent(`${cleanedTitle} ${artist || ''}`.trim())}`,
         { headers: { 'Lrclib-Client': 'JetMusic/4.3.2 (https://jet-music.vercel.app)' } }
       );
 

@@ -3,8 +3,10 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePWA } from '@/contexts/PWAContext';
 import { 
-  LogIn, Music, UserPlus, ExternalLink, Star, CheckCircle2, Share, PlusSquare, X
+  LogIn, UserPlus, ExternalLink, Star, CheckCircle2, Share, PlusSquare, X, Download
 } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
+import Image from 'next/image';
 import styles from './LandingPage.module.css';
 
 export default function LandingPage() {
@@ -24,7 +26,13 @@ export default function LandingPage() {
       {/* 🚀 HERO SECTION 🚀 */}
       <div className={styles.hero}>
         <div className={styles.logoBadge}>
-          <Music size={48} color="var(--accent-primary)" />
+          <Image 
+            src="/icon.png" 
+            alt="Jet Music Logo" 
+            width={100} 
+            height={100} 
+            className={styles.logoImgMain}
+          />
         </div>
         <h1 className={styles.title}>Jet Music Premium</h1>
         <p className={styles.subtitle}>สัมผัสประสบการณ์เสียงที่สมบูรณ์แบบที่สุด พร้อมคลังเพลงส่วนตัวของคุณ</p>
@@ -51,7 +59,13 @@ export default function LandingPage() {
         
         <div className={styles.appStoreCard}>
           <div className={styles.appIcon}>
-            <Music size={32} color="white" />
+            <Image 
+              src="/icon.png" 
+              alt="App Icon" 
+              width={64} 
+              height={64} 
+              className={styles.appIconImg}
+            />
           </div>
           <div className={styles.appMetadata}>
             <div className={styles.appName}>Jet Music Premium</div>
@@ -66,10 +80,19 @@ export default function LandingPage() {
             </div>
           </div>
           <div className={styles.actionArea}>
-            {isStandalone ? (
+            {isStandalone || Capacitor.isNativePlatform() ? (
               <div className={styles.installedBadge}>
                 <CheckCircle2 size={14} /> ติดตั้งแล้ว
               </div>
+            ) : (/Android/i.test(window.navigator.userAgent)) ? (
+              <a 
+                href="/jet-music.apk" 
+                download 
+                className={styles.getBtn} 
+                style={{ backgroundColor: '#4ade80', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 'auto', padding: '0 24px' }}
+              >
+                <Download size={16} style={{ marginRight: 6 }} /> DOWNLOAD APK
+              </a>
             ) : (isInstallable || isIOS) ? (
               <button 
                 className={styles.getBtn} 

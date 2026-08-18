@@ -1,5 +1,6 @@
 'use client';
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { Capacitor } from '@capacitor/core';
 
 interface PWAContextType {
   deferredPrompt: any;
@@ -16,6 +17,9 @@ export function PWAProvider({ children }: { children: ReactNode }) {
   const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
+    // 🛡️ Skip PWA logic if running in Native App
+    if (Capacitor.isNativePlatform()) return;
+
     // Register Service Worker
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {

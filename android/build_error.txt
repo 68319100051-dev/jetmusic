@@ -1,0 +1,64 @@
+
+Welcome to Gradle 8.14.3!
+
+Here are the highlights of this release:
+ - Java 24 support
+ - GraalVM Native Image toolchain selection
+ - Enhancements to test reporting
+ - Build Authoring improvements
+
+For more details see https://docs.gradle.org/8.14.3/release-notes.html
+
+
+> Configure project :app
+WARNING: Using flatDir should be avoided because it doesn't support any meta-data formats.
+
+> Configure project :capacitor-cordova-android-plugins
+WARNING: Using flatDir should be avoided because it doesn't support any meta-data formats.
+This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times.
+Checking the license for package Android SDK Build-Tools 35 in C:\Users\konkamonp\AppData\Local\Android\Sdk\licenses
+License for package Android SDK Build-Tools 35 accepted.
+Preparing "Install Android SDK Build-Tools 35 v.35.0.0".
+"Install Android SDK Build-Tools 35 v.35.0.0" ready.
+Installing Android SDK Build-Tools 35 in C:\Users\konkamonp\AppData\Local\Android\Sdk\build-tools\35.0.0
+"Install Android SDK Build-Tools 35 v.35.0.0" complete.
+"Install Android SDK Build-Tools 35 v.35.0.0" finished.
+Checking the license for package Android SDK Platform 36 in C:\Users\konkamonp\AppData\Local\Android\Sdk\licenses
+License for package Android SDK Platform 36 accepted.
+Preparing "Install Android SDK Platform 36 (revision 2)".
+"Install Android SDK Platform 36 (revision 2)" ready.
+Installing Android SDK Platform 36 in C:\Users\konkamonp\AppData\Local\Android\Sdk\platforms\android-36
+"Install Android SDK Platform 36 (revision 2)" complete.
+"Install Android SDK Platform 36 (revision 2)" finished.
+[=========                              ] 25%                                   
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :capacitor-android:preBuild UP-TO-DATE
+> Task :capacitor-android:preDebugBuild UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:preBuild UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:preDebugBuild UP-TO-DATE
+> Task :capacitor-android:writeDebugAarMetadata
+> Task :capacitor-cordova-android-plugins:writeDebugAarMetadata
+> Task :app:javaPreCompileDebug
+> Task :capacitor-android:processDebugNavigationResources
+> Task :app:checkDebugAarMetadata FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:checkDebugAarMetadata'.
+> Multiple build operations failed.
+      Could not move temporary workspace (C:\Users\konkamonp\.gradle\caches\8.14.3\transforms\754c4f1b691d2a1223e4f8f413992fee-9011fdf1-cfed-49c7-b807-6b99a02e9921) to immutable location (C:\Users\konkamonp\.gradle\caches\8.14.3\transforms\754c4f1b691d2a1223e4f8f413992fee)
+      Could not move temporary workspace (C:\Users\konkamonp\.gradle\caches\8.14.3\transforms\c2f70b51baa62bcee94ea5c7e05791a1-94d44022-3453-4422-8568-e98935e5846f) to immutable location (C:\Users\konkamonp\.gradle\caches\8.14.3\transforms\c2f70b51baa62bcee94ea5c7e05791a1)
+   > Could not move temporary workspace (C:\Users\konkamonp\.gradle\caches\8.14.3\transforms\754c4f1b691d2a1223e4f8f413992fee-9011fdf1-cfed-49c7-b807-6b99a02e9921) to immutable location (C:\Users\konkamonp\.gradle\caches\8.14.3\transforms\754c4f1b691d2a1223e4f8f413992fee)
+   > Could not move temporary workspace (C:\Users\konkamonp\.gradle\caches\8.14.3\transforms\c2f70b51baa62bcee94ea5c7e05791a1-94d44022-3453-4422-8568-e98935e5846f) to immutable location (C:\Users\konkamonp\.gradle\caches\8.14.3\transforms\c2f70b51baa62bcee94ea5c7e05791a1)
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 1m 21s
+5 actionable tasks: 5 executed

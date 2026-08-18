@@ -10,6 +10,7 @@ import { ModalProvider } from "@/contexts/ModalContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import SplashScreen from "@/components/SplashScreen";
 import RootLayoutClient from "@/components/RootLayoutClient";
+import WebGuard from "@/components/WebGuard";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -17,6 +18,10 @@ export const metadata: Metadata = {
   title: "Jet Music Premium",
   description: "Experience music like never before with Jet Music PWA",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/icon-v2.png",
+    apple: "/icon-v2.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -51,6 +56,7 @@ export default function RootLayout({
                 <DiscoveryProvider>
                   <PlayerProvider>
                     <PWAProvider>
+                      <WebGuard />
                       <SplashScreen />
                       <RootLayoutClient>
                         {children}

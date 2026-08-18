@@ -27,8 +27,15 @@
 }
 
 .logo {
-  animation: spin 3s linear infinite;
   z-index: 2;
+  border-radius: 20px;
+  box-shadow: 0 0 30px rgba(129, 140, 248, 0.4);
+  animation: logoAppear 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes logoAppear {
+  from { transform: scale(0.5); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
 }
 
 .pulse {

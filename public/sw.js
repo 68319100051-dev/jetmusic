@@ -1,25 +1,74 @@
-const CACHE_NAME = 'jet-music-v1';
+const CACHE_NAME = 'jet-music-v7';
 
-// Install event
+// Install event - Force immediate activation
 self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Activate event
+// Activate event - Wipe all old caches instantly
 self.addEventListener('activate', (event) => {
-  event.waitUntil(clients.claim());
+  event.waitUntil(
+    Promise.all([
+      self.clients.claim(),
+      caches.keys().then((cacheNames) => {
+        return Promise.all(
+          cacheNames.map((cacheName) => {
+            if (cacheName !== CACHE_NAME) {
+              console.log("[SW] Deleting old cache:", cacheName);
+              return caches.delete(cacheName);
+            }
+          })
+        );
+      }),
+    ])
+  );
 });
 
-// Fetch event (Network first strategy for simple offline capability)
+// Fetch event Optimized for Continuous Background Audio (v7)
 self.addEventListener('fetch', (event) => {
-  // Only handle GET requests
-  if (event.request.method !== 'GET') return;
-  // Ignore API requests for caching to prevent stale data
-  if (event.request.url.includes('/api/')) return;
+  const { request } = event;
+  const url = new URL(request.url);
+
+  if (request.method !== 'GET') return;
+
+  // Detect audio streams
+  const isAudio = 
+    url.pathname.includes('/api/stream') || 
+    url.href.includes('.mp3') || 
+    url.href.includes('.m4a') || 
+    url.href.includes('opus') ||
+    url.href.includes('googlevideo.com');
+
+  if (isAudio) {
+    event.respondWith(
+      fetch(request, {
+        priority: 'high',
+        keepalive: true
+      }).catch(err => {
+        console.error("[SW] Background fetch failed:", err);
+        return caches.match(request);
+      })
+    );
+    return;
+  }
+
+  // Standard strategy: Network-first for main scripts, Cache-first for assets
+  if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css') || url.pathname === '/') {
+      event.respondWith(
+        fetch(request).then(response => {
+           const copy = response.clone();
+           caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
+           return response;
+        }).catch(() => caches.match(request))
+      );
+      return;
+  }
 
   event.respondWith(
-    fetch(event.request).catch(() => {
-      return caches.match(event.request);
+    caches.match(request).then((response) => {
+      return response || fetch(request).then(networkResponse => {
+         return networkResponse;
+      });
     })
   );
 });

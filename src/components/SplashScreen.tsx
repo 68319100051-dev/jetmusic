@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useState } from 'react';
-import { Disc3 } from 'lucide-react';
+import Image from 'next/image';
 import styles from './SplashScreen.module.css';
 
 export default function SplashScreen() {
@@ -19,7 +19,14 @@ export default function SplashScreen() {
     <div className={styles.overlay}>
       <div className={styles.content}>
         <div className={styles.logoWrapper}>
-          <Disc3 className={styles.logo} size={80} color="#818cf8" />
+          <Image 
+            src="/icon.png" 
+            alt="Jet Music Logo" 
+            width={120} 
+            height={120} 
+            className={styles.logo}
+            priority
+          />
           <div className={styles.pulse}></div>
         </div>
         <h1 className={styles.title}>Jet Music</h1>

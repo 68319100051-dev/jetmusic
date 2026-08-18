@@ -23,6 +23,7 @@ export interface PlayerContextType {
   toggleShuffle: () => void;
   toggleRepeat: () => void;
   onTrackEnded: () => void;
+  startRadio: (track: TrackData) => void;
   resetPlayer: () => void;
 }
 
@@ -37,8 +38,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [shuffle, setShuffle] = useState(false);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
   const [playSource, setPlaySource] = useState<PlaySource>('discovery');
+  const [shuffledIndices, setShuffledIndices] = useState<number[]>([]);
 
   const history = user?.history || [];
+
+  // Generate shuffled indices when shuffle is turned on or queue changes
+  useEffect(() => {
+    if (shuffle && queue.length > 0) {
+      const indices = Array.from({ length: queue.length }, (_, i) => i);
+      // Remove current index from shuffle pool to avoid immediate repeat if possible
+      const otherIndices = indices.filter(i => i !== currentIndex);
+      for (let i = otherIndices.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [otherIndices[i], otherIndices[j]] = [otherIndices[j], otherIndices[i]];
+      }
+      setShuffledIndices([currentIndex, ...otherIndices]);
+    } else {
+      setShuffledIndices([]);
+    }
+  }, [shuffle, queue.length]);
 
   // Hydrate from LocalStorage
   useEffect(() => {
@@ -108,11 +126,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const playNext = useCallback(() => {
     if (queue.length === 0) return;
     let nextIndex: number;
-    if (shuffle) {
-      const candidates = queue.map((_, i) => i).filter(i => i !== currentIndex);
-      nextIndex = candidates.length > 0
-        ? candidates[Math.floor(Math.random() * candidates.length)]
-        : currentIndex;
+    if (shuffle && shuffledIndices.length > 0) {
+      const currentPosInShuffle = shuffledIndices.indexOf(currentIndex);
+      nextIndex = shuffledIndices[(currentPosInShuffle + 1) % shuffledIndices.length];
     } else {
       nextIndex = (currentIndex + 1) % queue.length;
     }
@@ -122,16 +138,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setCurrentTrack(nextTrack);
     setIsPlaying(true);
     addToHistory(nextTrack);
-  }, [queue, currentIndex, shuffle, addToHistory]);
+  }, [queue, currentIndex, shuffle, shuffledIndices, addToHistory]);
 
   const playPrevious = useCallback(() => {
     if (queue.length === 0) return;
     let prevIndex: number;
-    if (shuffle) {
-      const candidates = queue.map((_, i) => i).filter(i => i !== currentIndex);
-      prevIndex = candidates.length > 0
-        ? candidates[Math.floor(Math.random() * candidates.length)]
-        : currentIndex;
+    if (shuffle && shuffledIndices.length > 0) {
+      const currentPosInShuffle = shuffledIndices.indexOf(currentIndex);
+      prevIndex = shuffledIndices[currentPosInShuffle - 1 < 0 ? shuffledIndices.length - 1 : currentPosInShuffle - 1];
     } else {
       prevIndex = currentIndex - 1 < 0 ? queue.length - 1 : currentIndex - 1;
     }
@@ -141,7 +155,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setCurrentTrack(prevTrack);
     setIsPlaying(true);
     addToHistory(prevTrack);
-  }, [queue, currentIndex, shuffle, addToHistory]);
+  }, [queue, currentIndex, shuffle, shuffledIndices, addToHistory]);
+
+  const startRadio = useCallback(async (track: TrackData) => {
+    if (isGuest) { setShowAuthModal(true); return; }
+    try {
+      console.log(`[JET-RADIO] 📻 Starting Radio for: ${track.title}`);
+      const res = await fetch(`/api/related?id=${encodeURIComponent(track.id)}`);
+      const data = await res.json();
+      if (data.results && data.results.length > 0) {
+        const radioQueue = [track, ...data.results.slice(0, 19)];
+        setQueue(radioQueue);
+        setCurrentIndex(0);
+        setCurrentTrack(track);
+        setIsPlaying(true);
+        setPlaySource('discovery');
+        addToHistory(track);
+      }
+    } catch (e) {
+      console.error("[JET-RADIO] Error starting radio:", e);
+    }
+  }, [isGuest, setShowAuthModal, addToHistory]);
 
   const onTrackEnded = useCallback(async () => {
     updateStats({ songsPlayed: 1 });
@@ -152,47 +186,45 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (queue.length > 1) {
-      if (repeatMode === 'all' || currentIndex < queue.length - 1) {
-        playNext();
-      } else {
-        setIsPlaying(false);
-      }
+    const isAtEndOfQueue = currentIndex >= queue.length - 1;
+
+    // Normal play next if we are not at end, or if repeat all
+    if (!isAtEndOfQueue || repeatMode === 'all') {
+      playNext();
       return;
     }
 
-    // If queue has 0 or 1 track, and not repeating one
-    // Implement smart autoplay for 'search' or 'discovery' sources
-    if (playSource === 'search' || playSource === 'discovery') {
-      if (!currentTrack) return;
+    // 🎵 AUTO DJ: We reached the end of the queue — find similar songs and keep playing!
+    if (currentTrack) {
       try {
-        const artistQuery = `${currentTrack.artist} เพลงใหม่`;
-        const res = await fetch(`/api/search?q=${encodeURIComponent(artistQuery)}`);
+        console.log("[JET-AUTO-DJ] 🎵 Queue ended! Finding more songs...");
+        const res = await fetch(`/api/related?id=${encodeURIComponent(currentTrack.id)}`);
         const data = await res.json();
         if (data.results && data.results.length > 0) {
-          const similar = data.results.filter((t: TrackData) => t.id !== currentTrack.id);
-          if (similar.length > 0) {
-            const nextTrack = similar[Math.floor(Math.random() * Math.min(similar.length, 5))];
-            setQueue([currentTrack, ...similar]);
-            setCurrentIndex(1);
-            setCurrentTrack(nextTrack);
+          const queueIds = new Set(queue.map(t => t.id));
+          const newTracks = data.results
+            .filter((t: TrackData) => !queueIds.has(t.id))
+            .slice(0, 5); // Add up to 5 new tracks
+
+          if (newTracks.length > 0) {
+            setQueue(prev => [...prev, ...newTracks]);
+            setCurrentIndex(queue.length); // Jump to first new track
+            setCurrentTrack(newTracks[0]);
             setIsPlaying(true);
-            setPlaySource('discovery');
-            addToHistory(nextTrack);
-          } else {
-            setIsPlaying(false); // No similar tracks found
+            addToHistory(newTracks[0]);
+            console.log(`[JET-AUTO-DJ] ✅ Added ${newTracks.length} tracks to queue!`);
+            return;
           }
-        } else {
-          setIsPlaying(false); // No search results
         }
+        setIsPlaying(false);
       } catch (e) {
-        console.error("Smart autoplay error:", e);
+        console.error("[JET-AUTO-DJ] Error:", e);
         setIsPlaying(false);
       }
     } else {
-      setIsPlaying(false); // Stop playing if no more tracks and not in smart autoplay mode
+      setIsPlaying(false);
     }
-  }, [repeatMode, queue.length, currentIndex, playNext, playSource, currentTrack, updateStats, addToHistory]);
+  }, [repeatMode, queue, currentIndex, playNext, currentTrack, updateStats, addToHistory]);
 
   const resetPlayer = useCallback(() => {
     setCurrentTrack(null);
@@ -213,7 +245,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       currentTrack, queue, currentIndex, isPlaying,
       shuffle, repeatMode, playSource, history,
       playTrack, pauseTrack, resumeTrack,
-      playNext, playPrevious, toggleShuffle, toggleRepeat, onTrackEnded, resetPlayer
+      playNext, playPrevious, toggleShuffle, toggleRepeat, onTrackEnded, startRadio, resetPlayer
     }}>
       {children}
     </PlayerContext.Provider>
